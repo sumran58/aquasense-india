@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Dashboard — AquaSense India</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="13" stroke="#5DCAA5" stroke-width="1.5"/><path d="M14 4C14 4 8 10 8 15C8 18.8 10.7 22 14 22C17.3 22 20 18.8 20 15C20 10 14 4 14 4Z" fill="#1D9E75" opacity="0.85"/><path d="M10 16C10 16 12 14 14 16C16 18 18 16 18 16" stroke="#9FE1CB" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+    <div class="logo-text"><span class="logo-name">AquaSense</span><span class="logo-sub">India</span></div>
+  </div>
+  <nav class="sidebar-nav">
+    <a href="index.html"   class="nav-item active"><svg class="nav-icon" viewBox="0 0 20 20"><rect x="2" y="2" width="7" height="7" rx="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5"/><rect x="2" y="11" width="7" height="7" rx="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5"/></svg>Dashboard</a>
+    <a href="predict.html" class="nav-item"><svg class="nav-icon" viewBox="0 0 20 20"><path d="M10 2L2 7l8 5 8-5-8-5z"/><path d="M2 13l8 5 8-5"/></svg>Predict</a>
+    <a href="map.html"     class="nav-item"><svg class="nav-icon" viewBox="0 0 20 20"><path d="M10 2C7.24 2 5 4.24 5 7c0 4 5 11 5 11s5-7 5-11c0-2.76-2.24-5-5-5z"/><circle cx="10" cy="7" r="2"/></svg>Risk Map</a>
+    <a href="eda.html"     class="nav-item"><svg class="nav-icon" viewBox="0 0 20 20"><polyline points="2,16 7,9 11,13 15,6 18,8"/></svg>EDA Explorer</a>
+    <a href="upload.html"  class="nav-item"><svg class="nav-icon" viewBox="0 0 20 20"><path d="M10 2v12M6 6l4-4 4 4"/><path d="M3 16h14"/></svg>Upload Data</a>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="live-badge"><span class="live-dot"></span>CGWB Connected</div>
+    <p class="sidebar-ver">AquaSense v1.0 · 2024</p>
+  </div>
+</aside>
+
+<main class="main">
+  <header class="topbar">
+    <div class="topbar-l">
+      <button class="sidebar-toggle" onclick="toggleSidebar()"><svg width="20" height="20" viewBox="0 0 20 20"><path d="M3 5H17M3 10H17M3 15H17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+      <div><p class="page-h1">Dashboard</p><p class="page-sub">National groundwater intelligence overview</p></div>
+    </div>
+    <div class="topbar-r">
+      <span class="last-upd" id="lastUpd">—</span>
+      <button class="btn-refresh" onclick="init()"><svg viewBox="0 0 16 16"><path d="M13.6 2.4A7 7 0 1 0 15 8h-2A5 5 0 1 1 8 3a5 5 0 0 1 3.5 1.5L9 7h6V1l-1.4 1.4z" fill="currentColor"/></svg>Refresh</button>
+    </div>
+  </header>
+
+  <!-- KPIs -->
+  <section class="kpi-grid">
+    <div class="kpi-card kpi-c">
+      <div class="kpi-icon"><svg viewBox="0 0 24 24"><path d="M12 2L2 20h20L12 2zm0 4l7 12H5l7-12zm-1 4v4h2v-4h-2zm0 6v2h2v-2h-2z"/></svg></div>
+      <div class="kpi-body"><span class="kpi-label">Critical Districts</span><span class="kpi-value" id="kpi-c">—</span><span class="kpi-note">Immediate action needed</span></div>
+    </div>
+    <div class="kpi-card kpi-w">
+      <div class="kpi-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+      <div class="kpi-body"><span class="kpi-label">Warning Districts</span><span class="kpi-value" id="kpi-w">—</span><span class="kpi-note">Monitor closely</span></div>
+    </div>
+    <div class="kpi-card kpi-s">
+      <div class="kpi-icon"><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
+      <div class="kpi-body"><span class="kpi-label">Stable / Recovering</span><span class="kpi-value" id="kpi-s">—</span><span class="kpi-note">Within safe range</span></div>
+    </div>
+    <div class="kpi-card kpi-m">
+      <div class="kpi-icon"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+      <div class="kpi-body"><span class="kpi-label">Districts Monitored</span><span class="kpi-value" id="kpi-total">—</span><span class="kpi-note" id="kpi-avg">Avg: — mbgl</span></div>
+    </div>
+  </section>
+
+  <!-- Charts Row -->
+  <section class="charts-row">
+    <div class="card">
+      <div class="card-h">
+        <div><p class="card-title">National Groundwater Level Trend</p><p class="card-sub">Average depth (mbgl) over time — higher = deeper = more severe</p></div>
+        <div style="display:flex;gap:4px;">
+          <button class="filter-btn f-ALL" onclick="setRange(this,'all')" style="font-size:11px;padding:4px 10px;">All</button>
+          <button class="filter-btn" onclick="setRange(this,'5y')" style="font-size:11px;padding:4px 10px;">5Y</button>
+          <button class="filter-btn" onclick="setRange(this,'2y')" style="font-size:11px;padding:4px 10px;">2Y</button>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-h"><div><p class="card-title">Risk Distribution</p><p class="card-sub">By district count</p></div></div>
+      <div class="chart-wrap-sm"><canvas id="riskChart"></canvas></div>
+      <div id="riskLegend" style="display:flex;flex-wrap:wrap;gap:8px;padding-top:10px;border-top:1px solid var(--border);margin-top:10px;"></div>
+    </div>
+  </section>
+
+  <!-- Bottom Row -->
+  <section class="bottom-row">
+    <div class="card">
+      <div class="card-h"><p class="card-title">Risk Heatmap</p><a href="map.html" style="font-size:12px;color:var(--teal-600);text-decoration:none;">Full map →</a></div>
+      <div class="mini-map" id="miniMap"></div>
+    </div>
+    <div class="card">
+      <div class="card-h"><p class="card-title">Most Critical Districts</p><span class="pill pill-CRITICAL">Alert</span></div>
+      <table class="data-table">
+        <thead><tr><th>District</th><th>State</th><th>Level</th><th>Risk</th></tr></thead>
+        <tbody id="criticalTbody"><tr><td colspan="4" class="table-empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script src="assets/js/shared.js"></script>
+<script>
+let trendChart, riskChart, miniMap, allTrend = [];
+
+function cacheGet(k) {
+  try { const r=JSON.parse(localStorage.getItem(k)); if(r&&Date.now()-r.ts<300000) return r.d; } catch {}
+  return null;
+}
+function cacheSet(k,d) { try { localStorage.setItem(k,JSON.stringify({ts:Date.now(),d})); } catch {} }
+
+async function init() {
+  updateLastUpdated();
+  injectDataBanner();
+  await Promise.all([loadKPIs(), loadTrend(), loadRiskDonut(), loadCritical()]);
+  initMap();
+}
+
+async function loadKPIs() {
+  const cached = cacheGet("aq_stats");
+  if (cached) renderKPIs(cached);
+  try {
+    const d = await apiFetch("/predictions/stats");
+    if (d && d.total_districts > 0) { cacheSet("aq_stats", d); renderKPIs(d); }
+    else if (!cached) setDemoKPIs();
+  } catch(e) { console.error("KPI error:", e); if (!cached) setDemoKPIs(); }
+}
+function renderKPIs(d) {
+  document.getElementById("kpi-c").textContent = d.critical ?? "0";
+  document.getElementById("kpi-w").textContent = d.warning ?? "0";
+  document.getElementById("kpi-s").textContent = (d.stable||0)+(d.recovering||0);
+  document.getElementById("kpi-total").textContent = d.total_districts ?? "0";
+  document.getElementById("kpi-avg").textContent = d.avg_level_mbgl ? "Avg: "+d.avg_level_mbgl+" mbgl" : "";
+}
+function setDemoKPIs() {
+  document.getElementById("kpi-c").textContent="12";
+  document.getElementById("kpi-w").textContent="23";
+  document.getElementById("kpi-s").textContent="11";
+  document.getElementById("kpi-total").textContent="50";
+  document.getElementById("kpi-avg").textContent="Avg: 11.8 mbgl";
+}
+
+async function loadTrend() {
+  const cached = cacheGet("aq_trend");
+  if (cached) { allTrend=cached; renderTrend(allTrend); }
+  try {
+    const d = await apiFetch("/districts/trend-data");
+    if (d.trend && d.trend.length) { allTrend=d.trend; cacheSet("aq_trend",allTrend); renderTrend(allTrend); }
+    else if (!cached) { allTrend=demoTrend(); renderTrend(allTrend); }
+  } catch { if(!cached) { allTrend=demoTrend(); renderTrend(allTrend); } }
+}
+function renderTrend(data) {
+  const ctx=document.getElementById("trendChart").getContext("2d");
+  if(trendChart) trendChart.destroy();
+  trendChart=new Chart(ctx,{type:"line",
+    data:{labels:data.map(d=>d.period),datasets:[
+      {label:"National avg (mbgl)",data:data.map(d=>d.avg),borderColor:"#1D9E75",backgroundColor:"rgba(29,158,117,0.07)",borderWidth:2,pointRadius:2,fill:true,tension:0.4},
+      {label:"Max depth (mbgl)",data:data.map(d=>d.max),borderColor:"#E24B4A",borderWidth:1.5,borderDash:[5,4],pointRadius:0,fill:false,tension:0.4}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:"top",labels:{font:{size:11},boxWidth:12}},
+        tooltip:{callbacks:{label:c=>c.dataset.label+": "+c.parsed.y.toFixed(2)+" mbgl"}}},
+      scales:{x:{grid:{color:"rgba(0,0,0,0.04)"},ticks:{font:{size:10},maxTicksLimit:14}},
+              y:{grid:{color:"rgba(0,0,0,0.04)"},ticks:{font:{size:11},callback:v=>v+"m"}}}}
+  });
+}
+function setRange(btn,r) {
+  document.querySelectorAll(".filter-btn").forEach(b=>b.className="filter-btn");
+  btn.classList.add("f-ALL");
+  renderTrend(r==="2y"?allTrend.slice(-8):r==="5y"?allTrend.slice(-20):allTrend);
+}
+
+async function loadRiskDonut() {
+  let counts={CRITICAL:12,WARNING:23,STABLE:11,RECOVERING:4};
+  try {
+    const cached=cacheGet("aq_stats");
+    const d=cached||await apiFetch("/predictions/stats");
+    if(d&&d.critical!=null) counts={CRITICAL:d.critical,WARNING:d.warning,STABLE:d.stable,RECOVERING:d.recovering};
+  } catch {}
+  const ctx=document.getElementById("riskChart").getContext("2d");
+  if(riskChart) riskChart.destroy();
+  const labs=Object.keys(counts),vals=Object.values(counts),cols=labs.map(l=>RISK_COLOR[l]);
+  riskChart=new Chart(ctx,{type:"doughnut",
+    data:{labels:labs,datasets:[{data:vals,backgroundColor:cols,borderWidth:2,borderColor:"#fff",hoverOffset:4}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:"68%",
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>" "+c.label+": "+c.parsed+" districts"}}}}
+  });
+  document.getElementById("riskLegend").innerHTML=labs.map((l,i)=>
+    "<div style='display:flex;align-items:center;gap:5px;font-size:11px;'>"+
+    "<span style='width:8px;height:8px;border-radius:50%;background:"+cols[i]+";display:inline-block;flex-shrink:0;'></span>"+
+    RISK_LABEL[l]+" ("+vals[i]+")</div>").join("");
+}
+
+function initMap() {
+  if(miniMap) return;
+  miniMap=L.map("miniMap",{center:[22.5,80],zoom:4,zoomControl:false,attributionControl:false});
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png").addTo(miniMap);
+  demoDistricts().forEach(d=>{
+    L.circleMarker([d.lat,d.lng],{radius:6,fillColor:RISK_COLOR[d.risk],color:"#fff",weight:1.5,fillOpacity:0.9})
+     .addTo(miniMap).bindTooltip("<b>"+d.district+"</b><br>"+d.level+" mbgl - "+d.risk,{direction:"top"});
+  });
+}
+
+async function loadCritical() {
+  const tbody=document.getElementById("criticalTbody");
+  const cached=cacheGet("aq_critical");
+  if(cached) renderCritical(cached);
+  try {
+    const r=await apiFetch("/predictions/critical");
+    if(r.districts&&r.districts.length){ cacheSet("aq_critical",r.districts); renderCritical(r.districts); }
+    else if(!cached) renderCritical(demoDistricts().filter(d=>d.risk==="CRITICAL"));
+  } catch { if(!cached) renderCritical(demoDistricts().filter(d=>d.risk==="CRITICAL")); }
+}
+function renderCritical(data) {
+  const tbody=document.getElementById("criticalTbody");
+  if(!data||!data.length){tbody.innerHTML="<tr><td colspan='4' class='table-empty'>No critical districts</td></tr>";return;}
+  tbody.innerHTML=data.slice(0,8).map(d=>"<tr><td><strong>"+d.district+"</strong></td><td style='color:var(--text-3)'>"+
+    (d.state||"")+"</td><td><strong style='color:var(--critical)'>"+fmt(d.level_mbgl||d.level)+" m</strong></td>"+
+    "<td>"+pill("CRITICAL")+"</td></tr>").join("");
+}
+
+function demoTrend() {
+  const t=[]; let v=6.5;
+  for(let y=2010;y<=2024;y++) for(let q=1;q<=4;q++){
+    v=Math.max(3,v+(q===3?-0.5:0.28)+(Math.random()-0.5)*0.3);
+    t.push({period:"Q"+q+" "+y,year:y,quarter:q,avg:+v.toFixed(2),max:+(v*1.7).toFixed(2),min:+(v*0.4).toFixed(2)});
+  }
+  return t;
+}
+function demoDistricts() {
+  return [
+    {district:"Jodhpur",state:"Rajasthan",lat:26.3,lng:73.0,level:22.4,risk:"CRITICAL"},
+    {district:"Barmer",state:"Rajasthan",lat:25.75,lng:71.4,level:19.8,risk:"CRITICAL"},
+    {district:"Ludhiana",state:"Punjab",lat:30.9,lng:75.85,level:18.6,risk:"CRITICAL"},
+    {district:"Hisar",state:"Haryana",lat:29.15,lng:75.72,level:17.3,risk:"CRITICAL"},
+    {district:"Patna",state:"Bihar",lat:25.61,lng:85.14,level:4.1,risk:"STABLE"},
+    {district:"Dehradun",state:"Uttarakhand",lat:30.32,lng:78.03,level:2.9,risk:"RECOVERING"},
+  ];
+}
+
+document.addEventListener("DOMContentLoaded", init);
+</script>
+</body>
+</html>

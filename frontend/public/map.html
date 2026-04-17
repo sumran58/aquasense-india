@@ -1,0 +1,172 @@
+<!-- FILE: map.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Risk Map — AquaSense India</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <style>
+    body { overflow: hidden; }
+    .search-inp { width:100%; padding:8px 12px; border:1px solid var(--border-md);
+                  border-radius:var(--radius); font-size:13px; font-family:var(--font-body);
+                  margin-bottom:8px; }
+    .search-inp:focus { outline:none; border-color:var(--teal-400); }
+    .dist-list { flex:1; overflow-y:auto; }
+  </style>
+</head>
+<body>
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="13" stroke="#5DCAA5" stroke-width="1.5"/><path d="M14 4C14 4 8 10 8 15C8 18.8 10.7 22 14 22C17.3 22 20 18.8 20 15C20 10 14 4 14 4Z" fill="#1D9E75" opacity="0.85"/></svg>
+    <div class="logo-text"><span class="logo-name">AquaSense</span><span class="logo-sub">India</span></div>
+  </div>
+  <nav class="sidebar-nav">
+    <a href="index.html"   class="nav-item"><svg class="nav-icon" viewBox="0 0 20 20"><rect x="2" y="2" width="7" height="7" rx="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5"/><rect x="2" y="11" width="7" height="7" rx="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5"/></svg>Dashboard</a>
+    <a href="predict.html" class="nav-item"><svg class="nav-icon" viewBox="0 0 20 20"><path d="M10 2L2 7l8 5 8-5-8-5z"/><path d="M2 13l8 5 8-5"/></svg>Predict</a>
+    <a href="map.html"     class="nav-item active"><svg class="nav-icon" viewBox="0 0 20 20"><path d="M10 2C7.24 2 5 4.24 5 7c0 4 5 11 5 11s5-7 5-11c0-2.76-2.24-5-5-5z"/><circle cx="10" cy="7" r="2"/></svg>Risk Map</a>
+    <a href="eda.html"     class="nav-item"><svg class="nav-icon" viewBox="0 0 20 20"><polyline points="2,16 7,9 11,13 15,6 18,8"/></svg>EDA Explorer</a>
+    <a href="upload.html"  class="nav-item"><svg class="nav-icon" viewBox="0 0 20 20"><path d="M10 2v12M6 6l4-4 4 4"/><path d="M3 16h14"/></svg>Upload Data</a>
+  </nav>
+  <div class="sidebar-footer"><div class="live-badge"><span class="live-dot"></span>CGWB Connected</div></div>
+</aside>
+
+<main class="main" style="overflow:hidden;">
+  <header class="topbar">
+    <div class="topbar-l">
+      <button class="sidebar-toggle" onclick="toggleSidebar()"><svg width="20" height="20" viewBox="0 0 20 20"><path d="M3 5H17M3 10H17M3 15H17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+      <div><p class="page-h1">India Groundwater Risk Map</p><p class="page-sub">Interactive district-level risk — click any marker for details</p></div>
+    </div>
+  </header>
+
+  <div class="map-layout">
+    <div class="map-panel">
+      <div class="map-panel-hdr">
+        <input class="search-inp" type="text" placeholder="Search district…" oninput="filterList(this.value)">
+        <div style="font-size:11px;font-weight:500;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Filter by risk</div>
+        <div class="filter-row">
+          <button class="filter-btn f-ALL" onclick="setFilter('ALL',this)">All</button>
+          <button class="filter-btn" onclick="setFilter('CRITICAL',this)">Critical</button>
+          <button class="filter-btn" onclick="setFilter('WARNING',this)">Warning</button>
+          <button class="filter-btn" onclick="setFilter('STABLE',this)">Stable</button>
+          <button class="filter-btn" onclick="setFilter('RECOVERING',this)">Recovering</button>
+        </div>
+      </div>
+      <div class="dist-list" id="distList"></div>
+    </div>
+    <div class="map-area">
+      <div id="fullMap"></div>
+      <div class="map-legend">
+        <div class="legend-title">Risk Level</div>
+        <div class="legend-row"><span class="legend-dot" style="background:#E24B4A"></span>Critical (&gt;20 mbgl)</div>
+        <div class="legend-row"><span class="legend-dot" style="background:#EF9F27"></span>Warning (12–20 mbgl)</div>
+        <div class="legend-row"><span class="legend-dot" style="background:#1D9E75"></span>Stable (5–12 mbgl)</div>
+        <div class="legend-row"><span class="legend-dot" style="background:#378ADD"></span>Recovering (&lt;5 mbgl)</div>
+      </div>
+      <div class="map-detail" id="mapDetail">
+        <button class="detail-close" onclick="document.getElementById('mapDetail').style.display='none'">×</button>
+        <div class="detail-name" id="dd-name">—</div>
+        <div class="detail-state" id="dd-state">—</div>
+        <div class="detail-row"><span class="detail-key">Water Level</span><span id="dd-level">—</span></div>
+        <div class="detail-row"><span class="detail-key">Risk</span><span id="dd-risk">—</span></div>
+        <a href="predict.html" style="display:block;margin-top:12px;font-size:12px;color:var(--teal-600);text-align:center;">Predict this district →</a>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="assets/js/shared.js"></script>
+<script>
+let DISTRICTS = [];
+let map, allMarkers = [], currentFilter = "ALL";
+
+async function initMap() {
+  map = L.map("fullMap",{center:[22.5,80],zoom:5});
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+    {attribution:"© CartoDB © OSM",maxZoom:19}).addTo(map);
+
+  // Show loading indicator
+  document.getElementById("distList").innerHTML = "<div style='padding:20px;text-align:center;color:var(--text-3);font-size:13px;'>Loading real data...</div>";
+
+  try {
+    const data = await apiFetch("/predictions/geojson");
+    if (data.features && data.features.length) {
+      DISTRICTS = data.features
+        .filter(f => f.geometry && f.geometry.coordinates)
+        .map(f => ({
+          district: f.properties.district,
+          state: f.properties.state,
+          lat: f.geometry.coordinates[1],
+          lng: f.geometry.coordinates[0],
+          level: f.properties.level_mbgl,
+          risk: f.properties.risk,
+        }));
+    }
+  } catch(e) {
+    console.error("Map data error:", e);
+  }
+
+  // Fallback to demo if no real data with coordinates
+  if (!DISTRICTS.length) {
+    DISTRICTS = [
+      {district:"Jodhpur",state:"Rajasthan",lat:26.3,lng:73.02,level:22.4,risk:"CRITICAL"},
+      {district:"Barmer",state:"Rajasthan",lat:25.75,lng:71.39,level:19.8,risk:"CRITICAL"},
+      {district:"Ludhiana",state:"Punjab",lat:30.9,lng:75.85,level:18.6,risk:"CRITICAL"},
+      {district:"Hisar",state:"Haryana",lat:29.15,lng:75.72,level:17.3,risk:"CRITICAL"},
+      {district:"Mehsana",state:"Gujarat",lat:23.6,lng:72.38,level:16.9,risk:"CRITICAL"},
+      {district:"Solapur",state:"Maharashtra",lat:17.69,lng:75.91,level:14.8,risk:"WARNING"},
+      {district:"Coimbatore",state:"Tamil Nadu",lat:11.0,lng:76.96,level:8.2,risk:"STABLE"},
+      {district:"Patna",state:"Bihar",lat:25.61,lng:85.14,level:4.1,risk:"STABLE"},
+      {district:"Dehradun",state:"Uttarakhand",lat:30.32,lng:78.03,level:2.9,risk:"RECOVERING"},
+    ];
+  }
+
+  DISTRICTS.forEach(d => {
+    const m = L.circleMarker([d.lat,d.lng],{
+      radius:d.level>18?10:d.level>12?7:5,
+      fillColor:RISK_COLOR[d.risk],color:"#fff",weight:1.5,fillOpacity:0.9,
+    }).addTo(map);
+    m.on("click",() => showDetail(d));
+    m.bindTooltip("<b>"+d.district+"</b><br>"+d.level+" mbgl · "+d.risk,{direction:"top"});
+    allMarkers.push({m, d});
+  });
+  renderList(DISTRICTS);
+}
+
+function showDetail(d) {
+  document.getElementById("dd-name").textContent  = d.district;
+  document.getElementById("dd-state").textContent = d.state;
+  document.getElementById("dd-level").textContent = d.level + " mbgl";
+  document.getElementById("dd-risk").innerHTML    = pill(d.risk);
+  document.getElementById("mapDetail").style.display = "block";
+  map.flyTo([d.lat,d.lng],8,{duration:1});
+}
+
+function setFilter(risk, btn) {
+  currentFilter = risk;
+  document.querySelectorAll(".filter-btn").forEach(b=>b.className="filter-btn");
+  btn.classList.add("f-"+risk);
+  allMarkers.forEach(({m,d}) => { if(risk==="ALL"||d.risk===risk) m.addTo(map); else m.remove(); });
+  renderList(risk==="ALL"?DISTRICTS:DISTRICTS.filter(d=>d.risk===risk));
+}
+
+function filterList(q) {
+  const f = DISTRICTS.filter(d => (currentFilter==="ALL"||d.risk===currentFilter) &&
+    (d.district.toLowerCase().includes(q.toLowerCase()) || d.state.toLowerCase().includes(q.toLowerCase())));
+  renderList(f);
+}
+
+function renderList(data) {
+  document.getElementById("distList").innerHTML = data.map(d => `
+    <div class="dist-item" onclick='showDetail(${JSON.stringify(d)})'>
+      <div><div class="dist-name">${d.district}</div><div class="dist-state">${d.state}</div></div>
+      <div><div class="dist-level" style="color:${RISK_COLOR[d.risk]}">${d.level} m</div>${pill(d.risk).replace("2px","1px")}</div>
+    </div>`).join("");
+}
+
+document.addEventListener("DOMContentLoaded", () => { injectDataBanner(); initMap(); });
+</script>
+</body>
+</html>

@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Upload Data — AquaSense India</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <style>
+    .upload-layout{padding:24px 28px;display:grid;grid-template-columns:480px 1fr;gap:20px;flex:1}
+    .drop-zone{border:2px dashed var(--border-md);border-radius:var(--radius-lg);padding:40px 24px;text-align:center;cursor:pointer;transition:all 0.2s;background:var(--surface-2)}
+    .drop-zone:hover,.drop-zone.drag-over{border-color:var(--teal-400);background:var(--teal-50)}
+    .drop-icon{width:48px;height:48px;margin:0 auto 12px;background:var(--teal-50);border-radius:12px;display:flex;align-items:center;justify-content:center}
+    .drop-icon svg{width:24px;height:24px;stroke:var(--teal-600);fill:none;stroke-width:1.8;stroke-linecap:round}
+    .btn-browse{display:inline-block;margin-top:14px;padding:8px 20px;background:var(--teal-600);color:#fff;border:none;border-radius:var(--radius);font-size:13px;cursor:pointer}
+    .progress-wrap{margin-top:20px;display:none}
+    .progress-bar-outer{height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:8px}
+    .progress-bar-inner{height:100%;background:var(--teal-400);border-radius:3px;width:0%;transition:width 0.3s}
+    .progress-label{font-size:12px;color:var(--text-3)}
+    .result-box{border-radius:var(--radius);padding:14px 16px;margin-top:16px;display:none}
+    .result-box.success{background:var(--teal-50);border:1px solid rgba(29,158,117,0.25)}
+    .result-box.error{background:#FFF0F0;border:1px solid rgba(226,75,74,0.25)}
+    .stat-mini-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
+    .stat-mini{background:var(--surface-2);border-radius:var(--radius);padding:10px 14px}
+    .stat-mini-v{font-family:var(--font-display);font-size:20px;font-weight:700;color:var(--teal-600)}
+    .stat-mini-l{font-size:11px;color:var(--text-3);margin-top:1px}
+    .step-guide{display:flex;flex-direction:column;gap:12px}
+    .step-item{display:flex;gap:14px;align-items:flex-start;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg)}
+    .step-num{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;flex-shrink:0}
+    .s1{background:#E1F5EE;color:#085041}.s2{background:#EEEDFE;color:#3C3489}.s3{background:#FAEEDA;color:#633806}.s4{background:#FAECE7;color:#712B13}
+    .step-body p{font-size:13.5px;font-weight:500;margin-bottom:3px}
+    .step-body small{font-size:12px;color:var(--text-3);line-height:1.6}
+    .code-sm{background:#1A2420;color:#9FE1CB;border-radius:6px;padding:8px 12px;font-family:monospace;font-size:12px;margin-top:8px;display:block;line-height:1.7}
+    @media(max-width:900px){.upload-layout{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="13" stroke="#5DCAA5" stroke-width="1.5"/><path d="M14 4C14 4 8 10 8 15C8 18.8 10.7 22 14 22C17.3 22 20 18.8 20 15C20 10 14 4 14 4Z" fill="#1D9E75" opacity="0.85"/></svg>
+    <div class="logo-text"><span class="logo-name">AquaSense</span><span class="logo-sub">India</span></div>
+  </div>
+  <nav class="sidebar-nav">
+    <a href="index.html" class="nav-item"><svg class="nav-icon" viewBox="0 0 20 20"><rect x="2" y="2" width="7" height="7" rx="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5"/><rect x="2" y="11" width="7" height="7" rx="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5"/></svg>Dashboard</a>
+    <a href="predict.html" class="nav-item"><svg class="nav-icon" viewBox="0 0 20 20"><path d="M10 2L2 7l8 5 8-5-8-5z"/><path d="M2 13l8 5 8-5"/></svg>Predict</a>
+    <a href="map.html" class="nav-item"><svg class="nav-icon" viewBox="0 0 20 20"><path d="M10 2C7.24 2 5 4.24 5 7c0 4 5 11 5 11s5-7 5-11c0-2.76-2.24-5-5-5z"/><circle cx="10" cy="7" r="2"/></svg>Risk Map</a>
+    <a href="eda.html" class="nav-item"><svg class="nav-icon" viewBox="0 0 20 20"><polyline points="2,16 7,9 11,13 15,6 18,8"/></svg>EDA Explorer</a>
+    <a href="upload.html" class="nav-item active"><svg class="nav-icon" viewBox="0 0 20 20"><path d="M10 2v12M6 6l4-4 4 4"/><path d="M3 16h14"/></svg>Upload Data</a>
+  </nav>
+  <div class="sidebar-footer"><div class="live-badge"><span class="live-dot"></span>CGWB Connected</div></div>
+</aside>
+
+<main class="main">
+  <header class="topbar">
+    <div class="topbar-l">
+      <button class="sidebar-toggle" onclick="toggleSidebar()"><svg width="20" height="20" viewBox="0 0 20 20"><path d="M3 5H17M3 10H17M3 15H17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+      <div><p class="page-h1">Upload Real CGWB Data</p><p class="page-sub">Import district-wise groundwater readings</p></div>
+    </div>
+  </header>
+  <div class="upload-layout">
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card">
+        <p class="card-title" style="margin-bottom:14px">Upload CGWB CSV</p>
+        <div class="drop-zone" id="dropZone"
+             ondragover="event.preventDefault();this.classList.add('drag-over')"
+             ondragleave="this.classList.remove('drag-over')"
+             ondrop="handleDrop(event)"
+             onclick="document.getElementById('fileInput').click()">
+          <div class="drop-icon"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
+          <p style="font-weight:600;font-size:15px;margin-bottom:4px">Drop your CGWB CSV here</p>
+          <p style="font-size:13px;color:var(--text-3)">or click to browse files</p>
+          <button class="btn-browse" onclick="event.stopPropagation();document.getElementById('fileInput').click()">Browse File</button>
+        </div>
+        <input type="file" id="fileInput" accept=".csv" style="display:none">
+        <div style="margin-top:14px">
+          <label style="font-size:12px;color:var(--text-2);display:block;margin-bottom:6px">CSV Source Format</label>
+          <select id="formatSelect" class="form-select">
+            <option value="auto">Auto-detect (recommended)</option>
+            <option value="india_data_portal">India Data Portal</option>
+            <option value="india_wris">India WRIS</option>
+            <option value="generic">Generic / Other</option>
+          </select>
+        </div>
+        <div class="progress-wrap" id="progressWrap">
+          <div class="progress-bar-outer"><div class="progress-bar-inner" id="progressBar"></div></div>
+          <p class="progress-label" id="progressLabel">Uploading…</p>
+        </div>
+        <div class="result-box" id="resultBox">
+          <p style="font-weight:500;font-size:14px;margin-bottom:6px" id="resultTitle">—</p>
+          <div style="font-size:13px;color:var(--text-2);line-height:1.8" id="resultRows"></div>
+        </div>
+      </div>
+      <div class="card">
+        <p class="card-title" style="margin-bottom:12px">Database Status</p>
+        <div class="stat-mini-grid">
+          <div class="stat-mini"><div class="stat-mini-v" id="db-records">—</div><div class="stat-mini-l">Total readings</div></div>
+          <div class="stat-mini"><div class="stat-mini-v" id="db-districts">—</div><div class="stat-mini-l">Districts</div></div>
+          <div class="stat-mini"><div class="stat-mini-v" id="db-states">—</div><div class="stat-mini-l">States</div></div>
+        </div>
+        <p style="font-size:12px;color:var(--text-3);margin-top:10px" id="db-range">Year range: —</p>
+        <button onclick="loadStatus()" style="margin-top:12px;padding:6px 14px;border:1px solid var(--border-md);border-radius:var(--radius);background:none;font-size:12px;cursor:pointer;color:var(--text-2)">Refresh status</button>
+      </div>
+    </div>
+    <div>
+      <p style="font-weight:600;font-size:15px;margin-bottom:14px">Step-by-Step Guide</p>
+      <div class="step-guide">
+        <div class="step-item"><div class="step-num s1">1</div><div class="step-body"><p>Download CGWB data</p><small>Download CSV from India Data Portal.</small><a class="code-sm" href="https://ckandev.indiadataportal.com/dataset/groundwater" target="_blank" style="color:#9FE1CB;text-decoration:none">https://ckandev.indiadataportal.com/dataset/groundwater</a></div></div>
+        <div class="step-item"><div class="step-num s2">2</div><div class="step-body"><p>Upload your CSV using the form on the left</p><small>Large files are processed in background — progress bar shows status.</small></div></div>
+        <div class="step-item"><div class="step-num s3">3</div><div class="step-body"><p>Train the ML model</p><small>After upload, run this command in your backend folder.</small><code class="code-sm">python -m app.ml.pipeline</code></div></div>
+        <div class="step-item"><div class="step-num s4">4</div><div class="step-body"><p>Explore predictions</p><small>Dashboard, Map, EDA and Predict pages now show your real data.</small></div></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="assets/js/shared.js"></script>
+<script>
+async function handleFile(file) {
+  if (!file) return;
+  if (!file.name.endsWith('.csv')) { alert('Please select a .csv file'); return; }
+
+  const wrap = document.getElementById('progressWrap');
+  const bar  = document.getElementById('progressBar');
+  const lbl  = document.getElementById('progressLabel');
+  const box  = document.getElementById('resultBox');
+
+  wrap.style.display = 'block';
+  box.style.display  = 'none';
+  bar.style.background = 'var(--teal-400)';
+  bar.style.width = '10%';
+  lbl.textContent = 'Reading: ' + file.name + ' (' + (file.size/1024/1024).toFixed(1) + ' MB)';
+
+  const fd = new FormData();
+  fd.append('file', file);
+  const fmt = document.getElementById('formatSelect').value;
+
+  try {
+    bar.style.width = '30%'; lbl.textContent = 'Uploading CSV…';
+    const res  = await fetch('/api/ingest/upload?source_format='+fmt, {method:'POST', body:fd});
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Upload failed');
+
+    bar.style.width = '40%';
+    lbl.textContent = 'Parsed ' + (data.rows_parsed||'?').toLocaleString() + ' rows. Inserting…';
+
+    // Poll job progress
+    const jobId = data.job_id;
+    while (true) {
+      await new Promise(r => setTimeout(r, 2000));
+      const job = await fetch('/api/ingest/job/' + jobId).then(r => r.json());
+      if (job.status === 'processing' || job.status === 'queued') {
+        bar.style.width = (40 + Math.floor((job.progress||0)*0.55)) + '%';
+        lbl.textContent = job.message || 'Inserting…';
+        continue;
+      }
+      if (job.status === 'done') {
+        bar.style.width = '100%'; lbl.textContent = 'Done!';
+        box.className = 'result-box success'; box.style.display = 'block';
+        document.getElementById('resultTitle').textContent = '✓ ' + job.message;
+        document.getElementById('resultRows').innerHTML =
+          '<div>Districts: <strong>'+(job.districts||data.districts)+'</strong></div>'+
+          '<div>States: <strong>'+(job.states||data.states)+'</strong></div>'+
+          '<div>Year range: <strong>'+(job.year_range||data.year_range)+'</strong></div>'+
+          '<div>Rows added: <strong>'+((job.rows_added||0)).toLocaleString()+'</strong></div>'+
+          '<div style="margin-top:8px;color:var(--teal-600)">▶ Next: run python -m app.ml.pipeline</div>';
+        loadStatus();
+        return;
+      }
+      if (job.status === 'error') throw new Error(job.message);
+    }
+  } catch(e) {
+    bar.style.width='100%'; bar.style.background='#E24B4A';
+    lbl.textContent='Upload failed';
+    box.className='result-box error'; box.style.display='block';
+    document.getElementById('resultTitle').textContent='✗ Error';
+    document.getElementById('resultRows').innerHTML='<div>'+e.message+'</div>';
+  }
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropZone').classList.remove('drag-over');
+  handleFile(e.dataTransfer.files[0]);
+}
+
+async function loadStatus() {
+  try {
+    const d = await fetch('/api/ingest/status').then(r=>r.json());
+    document.getElementById('db-records').textContent   = (d.readings_in_db||0).toLocaleString();
+    document.getElementById('db-districts').textContent = d.districts||0;
+    document.getElementById('db-states').textContent    = d.states||0;
+    document.getElementById('db-range').textContent     = 'Year range: '+(d.year_range||'—');
+  } catch {
+    document.getElementById('db-records').textContent='—';
+    document.getElementById('db-districts').textContent='—';
+    document.getElementById('db-states').textContent='—';
+    document.getElementById('db-range').textContent='API not running';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  // Clear file input immediately — prevents browser auto-firing previous file
+  document.getElementById('fileInput').value = '';
+  // Attach handler AFTER clearing
+  document.getElementById('fileInput').addEventListener('change', function() {
+    handleFile(this.files[0]);
+  });
+  loadStatus();
+});
+</script>
+</body>
+</html>

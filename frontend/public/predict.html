@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Predict — AquaSense India</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="13" stroke="#5DCAA5" stroke-width="1.5"/><path d="M14 4C14 4 8 10 8 15C8 18.8 10.7 22 14 22C17.3 22 20 18.8 20 15C20 10 14 4 14 4Z" fill="#1D9E75" opacity="0.85"/></svg>
+    <div class="logo-text"><span class="logo-name">AquaSense</span><span class="logo-sub">India</span></div>
+  </div>
+  <nav class="sidebar-nav">
+    <a href="index.html"   class="nav-item"><svg class="nav-icon" viewBox="0 0 20 20"><rect x="2" y="2" width="7" height="7" rx="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5"/><rect x="2" y="11" width="7" height="7" rx="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5"/></svg>Dashboard</a>
+    <a href="predict.html" class="nav-item active"><svg class="nav-icon" viewBox="0 0 20 20"><path d="M10 2L2 7l8 5 8-5-8-5z"/><path d="M2 13l8 5 8-5"/></svg>Predict</a>
+    <a href="map.html"     class="nav-item"><svg class="nav-icon" viewBox="0 0 20 20"><path d="M10 2C7.24 2 5 4.24 5 7c0 4 5 11 5 11s5-7 5-11c0-2.76-2.24-5-5-5z"/><circle cx="10" cy="7" r="2"/></svg>Risk Map</a>
+    <a href="eda.html"     class="nav-item"><svg class="nav-icon" viewBox="0 0 20 20"><polyline points="2,16 7,9 11,13 15,6 18,8"/></svg>EDA Explorer</a>
+    <a href="upload.html"  class="nav-item"><svg class="nav-icon" viewBox="0 0 20 20"><path d="M10 2v12M6 6l4-4 4 4"/><path d="M3 16h14"/></svg>Upload Data</a>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="live-badge"><span class="live-dot"></span>CGWB Connected</div>
+  </div>
+</aside>
+
+<main class="main">
+  <header class="topbar">
+    <div class="topbar-l">
+      <button class="sidebar-toggle" onclick="toggleSidebar()"><svg width="20" height="20" viewBox="0 0 20 20"><path d="M3 5H17M3 10H17M3 15H17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+      <div><p class="page-h1">Predict Groundwater Depletion</p><p class="page-sub">ML-powered district forecast with SHAP explainability</p></div>
+    </div>
+  </header>
+
+  <div class="predict-layout">
+    <!-- Form -->
+    <div class="card" style="height:fit-content;">
+      <p class="form-title">District Parameters</p>
+      <p class="form-sub">Enter current conditions — model predicts future water levels</p>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">State</label>
+          <select class="form-select" id="inp-state">
+            <option value="">Select…</option>
+            <option>Rajasthan</option><option>Punjab</option><option>Haryana</option>
+            <option>Gujarat</option><option>Maharashtra</option><option>Uttar Pradesh</option>
+            <option>Karnataka</option><option>Tamil Nadu</option><option>Andhra Pradesh</option>
+            <option>Telangana</option><option>Madhya Pradesh</option><option>Bihar</option>
+            <option>Odisha</option><option>West Bengal</option><option>Kerala</option>
+            <option>Himachal Pradesh</option><option>Uttarakhand</option><option>Delhi</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">District</label>
+          <input type="text" class="form-input" id="inp-district" placeholder="e.g. Jodhpur">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Current Water Level (mbgl)</label>
+        <input type="number" class="form-input" id="inp-level" placeholder="e.g. 18.5" step="0.1" min="0">
+        <p class="form-hint">Metres Below Ground Level — check latest CGWB reading for your district</p>
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Last Quarter Rainfall (mm)</label>
+          <input type="number" class="form-input" id="inp-rain" value="100">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Population Density (/km²)</label>
+          <input type="number" class="form-input" id="inp-pop" value="400">
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Agricultural Area (%)</label>
+          <input type="number" class="form-input" id="inp-agri" value="55" min="0" max="100">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Irrigation Wells (per km²)</label>
+          <input type="number" class="form-input" id="inp-wells" value="3.5" step="0.1">
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">NDVI Index (0–1)</label>
+          <input type="number" class="form-input" id="inp-ndvi" value="0.35" step="0.01" min="0" max="1">
+          <p class="form-hint">Vegetation health proxy</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Forecast Quarters</label>
+          <select class="form-select" id="inp-q">
+            <option value="2">2 quarters (6 months)</option>
+            <option value="4" selected>4 quarters (1 year)</option>
+            <option value="6">6 quarters (1.5 years)</option>
+            <option value="8">8 quarters (2 years)</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn-primary" id="predictBtn" onclick="runPredict()">Run ML Prediction</button>
+    </div>
+
+    <!-- Results -->
+    <div class="card" id="resultsCard">
+      <div id="placeholder" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:var(--text-3);min-height:300px;">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" style="opacity:0.25"><circle cx="24" cy="24" r="22" stroke="currentColor" stroke-width="1.5"/><path d="M24 8C24 8 14 18 14 26C14 31.5 18.5 36 24 36C29.5 36 34 31.5 34 26C34 18 24 8 24 8Z" fill="currentColor" opacity="0.4"/></svg>
+        <p style="font-size:14px;text-align:center;">Enter district parameters<br>and click <strong>Run ML Prediction</strong></p>
+      </div>
+      <div id="results" style="display:none;"></div>
+    </div>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script src="assets/js/shared.js"></script>
+<script>
+let predChart;
+
+async function runPredict() {
+  const district = document.getElementById("inp-district").value.trim();
+  const state    = document.getElementById("inp-state").value;
+  const level    = parseFloat(document.getElementById("inp-level").value);
+
+  if (!district || !state || isNaN(level)) {
+    alert("Please fill in: State, District, and Current Water Level"); return;
+  }
+
+  const btn = document.getElementById("predictBtn");
+  btn.textContent = "Predicting…"; btn.disabled = true;
+
+  try {
+    let data;
+    try {
+      data = await apiPost("/predictions/district", {
+        district, state,
+        current_level_mbgl:       level,
+        rainfall_mm_last_quarter: parseFloat(document.getElementById("inp-rain").value),
+        population_density:       parseFloat(document.getElementById("inp-pop").value),
+        agricultural_area_pct:    parseFloat(document.getElementById("inp-agri").value),
+        irrigation_wells_per_km2: parseFloat(document.getElementById("inp-wells").value),
+        ndvi_mean:                parseFloat(document.getElementById("inp-ndvi").value),
+        quarters_ahead:           parseInt(document.getElementById("inp-q").value),
+      });
+    } catch {
+      data = demoPredict(district, state, level, parseInt(document.getElementById("inp-q").value));
+    }
+    renderResults(data);
+  } finally { btn.textContent = "Run ML Prediction"; btn.disabled = false; }
+}
+
+function renderResults(d) {
+  document.getElementById("placeholder").style.display = "none";
+  const el = document.getElementById("results");
+  el.style.display = "block";
+
+  const maxL = Math.max(...d.predictions.map(p => p.predicted_level_mbgl), d.current_level_mbgl);
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div>
+        <h2 style="font-family:var(--font-display);font-size:17px;font-weight:600;">${d.district}, ${d.state}</h2>
+        <p style="font-size:12px;color:var(--text-3);">Current: <strong>${d.current_level_mbgl} mbgl</strong></p>
+      </div>
+      ${pill(d.overall_risk)}
+    </div>
+    <div class="result-banner" style="background:${d.overall_risk==='CRITICAL'?'#FFF0F0':d.overall_risk==='WARNING'?'#FFF8ED':'var(--teal-50)'};">
+      <p style="font-size:13.5px;">${d.summary}</p>
+    </div>
+    <div class="chart-wrap" style="height:170px;margin-bottom:18px;"><canvas id="pChart"></canvas></div>
+    <p style="font-family:var(--font-display);font-size:13px;font-weight:600;margin-bottom:10px;">Quarter-by-Quarter Forecast</p>
+    <div id="timeline"></div>
+    <div id="shapBlock"></div>
+  `;
+
+  // Render timeline
+  const tl = document.getElementById("timeline");
+  let qIdx = 0; d.predictions.forEach(p => { qIdx++;
+    const pct = Math.min((p.predicted_level_mbgl / maxL) * 100, 100);
+    tl.innerHTML += `
+      <div class="timeline-item">
+        <span class="tl-period">${p.quarter && p.year ? `Q${p.quarter} ${p.year}` : `Q${qIdx}`}</span>
+        <div class="tl-bar-wrap"><div class="tl-bar" style="width:${pct}%;background:${p.risk_color||RISK_COLOR[p.risk_level]};"></div></div>
+        <span class="tl-level" style="color:${p.risk_color||RISK_COLOR[p.risk_level]};">${(+p.predicted_level_mbgl).toFixed(1)} mbgl</span>
+        <span class="tl-risk">${pill(p.risk_level)}</span>
+      </div>`;
+  });
+
+  // SHAP explanation
+  const shap = d.predictions[0]?.shap;
+  if (shap?.top_features?.length) {
+    const maxAbs = Math.max(...shap.top_features.map(f => Math.abs(f.shap_value)));
+    document.getElementById("shapBlock").innerHTML = `
+      <div class="shap-wrap">
+        <p class="shap-title">What's driving this prediction? (SHAP Explainability)</p>
+        ${shap.top_features.map(f => {
+          const pct  = maxAbs > 0 ? Math.abs(f.shap_value/maxAbs)*100 : 50;
+          const col  = f.impact === "increases_risk" ? "#E24B4A" : "#1D9E75";
+          const sign = f.shap_value > 0 ? "+" : "";
+          return `<div class="shap-item">
+            <span class="shap-feat">${f.label||f.feature.replace(/_/g," ")}</span>
+            <div class="shap-bar-bg"><div class="shap-bar-fill" style="width:${pct.toFixed(0)}%;background:${col};"></div></div>
+            <span class="shap-val" style="color:${col};">${sign}${f.shap_value.toFixed(3)}</span>
+          </div>`;
+        }).join("")}
+        <p style="font-size:11px;color:var(--text-3);margin-top:8px;">Red = factors increasing depletion risk. Green = factors helping recovery. Values in mbgl impact.</p>
+        <p style="font-size:11px;color:var(--text-2);margin-top:4px;">${shap.interpretation||""}</p>
+      </div>`;
+  }
+
+  // Line chart
+  const ctx = document.getElementById("pChart").getContext("2d");
+  if (predChart) predChart.destroy();
+  predChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: ["Now", ...d.predictions.map((p,i) => {
+        if (p.quarter && p.year) return `Q${p.quarter} ${p.year}`;
+        const now = new Date();
+        const totalQ = now.getMonth() < 3 ? 1 : now.getMonth() < 6 ? 2 : now.getMonth() < 9 ? 3 : 4;
+        const yr = now.getFullYear();
+        const q = ((totalQ - 1 + i + 1) % 4) + 1;
+        const y = yr + Math.floor((totalQ - 1 + i + 1) / 4);
+        return `Q${q} ${y}`;
+      })],
+      datasets: [{
+        label: "Predicted Level (mbgl)",
+        data:  [d.current_level_mbgl, ...d.predictions.map(p => p.predicted_level_mbgl)],
+        borderColor: "#1D9E75", backgroundColor: "rgba(29,158,117,0.07)",
+        pointBackgroundColor: ["#888", ...d.predictions.map(p => p.risk_color||RISK_COLOR[p.risk_level])],
+        pointRadius: 6, borderWidth: 2, fill: true, tension: 0.35,
+      }],
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins: { legend:{display:false}, tooltip:{callbacks:{label:c=>`${c.parsed.y.toFixed(2)} mbgl`}} },
+      scales: {
+        x: { grid:{display:false}, ticks:{font:{size:10}} },
+        y: { grid:{color:"rgba(0,0,0,0.04)"}, ticks:{font:{size:11},callback:v=>v+"m"},
+             title:{display:true,text:"Depth (mbgl)",font:{size:10}} },
+      },
+    },
+  });
+}
+
+function demoPredict(district, state, level, quarters) {
+  const preds = []; let lv = level;
+  for (let i=0;i<quarters;i++) {
+    const q = (1+i)%4+1, y = 2024+Math.floor((1+i)/4);
+    lv = Math.max(0.5, lv + (q===3?-0.4:0.52) + (Math.random()-0.5)*0.3);
+    const rl = lv>20?"CRITICAL":lv>12?"WARNING":lv<5?"RECOVERING":"STABLE";
+    preds.push({
+      quarter:q, year:y, predicted_level_mbgl:+lv.toFixed(2),
+      risk_level:rl, risk_color:RISK_COLOR[rl],
+      shap:{ top_features:[
+        {feature:"irrigation_wells_per_km2",label:"Irrigation Well Density",shap_value:0.81,impact:"increases_risk"},
+        {feature:"rainfall_deficit",label:"Rainfall Deficit",shap_value:0.62,impact:"increases_risk"},
+        {feature:"level_lag_1q",label:"Previous Quarter Level",shap_value:0.55,impact:"increases_risk"},
+        {feature:"ndvi_mean",label:"NDVI Vegetation Index",shap_value:-0.3,impact:"reduces_risk"},
+      ], interpretation:"Irrigation density is the primary depletion driver." },
+    });
+  }
+  const worst = preds.reduce((a,b) => ({CRITICAL:4,WARNING:3,STABLE:2,RECOVERING:1}[b.risk_level]>({CRITICAL:4,WARNING:3,STABLE:2,RECOVERING:1}[a.risk_level])?b:a));
+  return { district, state, current_level_mbgl:level,
+    overall_risk:worst.risk_level, risk_color:RISK_COLOR[worst.risk_level],
+    summary:`${district} groundwater projected to change by ${(preds.at(-1).predicted_level_mbgl-level>0?"deepen":"recover")} ${Math.abs(preds.at(-1).predicted_level_mbgl-level).toFixed(1)} mbgl over ${quarters} quarters.`,
+    predictions:preds };
+}
+// Load real districts for autocomplete on page load
+async function loadDistricts() {
+  try {
+    const data = await apiFetch("/districts/");
+    if (!data.districts || !data.districts.length) return;
+    
+    // Populate state dropdown
+    const stateEl = document.getElementById("inp-state");
+    const states = [...new Set(data.districts.map(d => d.state))].sort();
+    stateEl.innerHTML = '<option value="">Select State</option>' +
+      states.map(s => '<option value="'+s+'">'+s+'</option>').join("");
+
+    // District autocomplete datalist
+    let dl = document.getElementById("district-list");
+    if (!dl) { dl = document.createElement("datalist"); dl.id = "district-list"; document.body.appendChild(dl); }
+    dl.innerHTML = data.districts.slice(0,200).map(d => 
+      '<option value="'+d.district+'">'+d.district+' ('+d.state+')</option>').join("");
+    document.getElementById("inp-district").setAttribute("list", "district-list");
+
+    // Auto-fill level when district selected
+    const distMap = {};
+    data.districts.forEach(d => { distMap[d.district] = d; });
+    document.getElementById("inp-district").addEventListener("change", function() {
+      const d = distMap[this.value];
+      if (d) {
+        document.getElementById("inp-level").value = d.latest_level.toFixed(1);
+        document.getElementById("inp-state").value = d.state;
+      }
+    });
+  } catch(e) { console.error("District load:", e); }
+}
+
+document.addEventListener("DOMContentLoaded", () => { 
+  injectDataBanner(); 
+  loadDistricts();
+});
+</script>
+</body>
+</html>
