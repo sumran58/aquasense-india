@@ -53,7 +53,7 @@
         </div>
         <div class="form-group">
           <label class="form-label">District</label>
-          <input type="text" class="form-input" id="inp-district" placeholder="e.g. Jodhpur">
+          <select class="form-select" id="inp-district"><option value="">Select District</option></select>
         </div>
       </div>
 
@@ -172,6 +172,7 @@ function renderResults(d) {
     <p style="font-family:var(--font-display);font-size:13px;font-weight:600;margin-bottom:10px;">Quarter-by-Quarter Forecast</p>
     <div id="timeline"></div>
     <div id="shapBlock"></div>
+    <div id="recommendations"></div>
   `;
 
   // Render timeline
@@ -208,6 +209,9 @@ function renderResults(d) {
         <p style="font-size:11px;color:var(--text-2);margin-top:4px;">${shap.interpretation||""}</p>
       </div>`;
   }
+
+  // Recommendations
+  renderRecommendations(d.overall_risk, d.current_level_mbgl, d.district, d.state);
 
   // Line chart
   const ctx = document.getElementById("pChart").getContext("2d");
@@ -272,31 +276,186 @@ async function loadDistricts() {
   try {
     const data = await apiFetch("/districts/");
     if (!data.districts || !data.districts.length) return;
-    
+
+    // Store all districts globally
+    window._allDistricts = data.districts;
+    window._distMap = {};
+    data.districts.forEach(d => { window._distMap[d.district + "_" + d.state] = d; });
+
     // Populate state dropdown
     const stateEl = document.getElementById("inp-state");
     const states = [...new Set(data.districts.map(d => d.state))].sort();
     stateEl.innerHTML = '<option value="">Select State</option>' +
       states.map(s => '<option value="'+s+'">'+s+'</option>').join("");
 
-    // District autocomplete datalist
-    let dl = document.getElementById("district-list");
-    if (!dl) { dl = document.createElement("datalist"); dl.id = "district-list"; document.body.appendChild(dl); }
-    dl.innerHTML = data.districts.slice(0,200).map(d => 
-      '<option value="'+d.district+'">'+d.district+' ('+d.state+')</option>').join("");
-    document.getElementById("inp-district").setAttribute("list", "district-list");
+    // When state changes, filter districts
+    stateEl.addEventListener("change", function() {
+      updateDistrictDropdown(this.value);
+    });
 
-    // Auto-fill level when district selected
-    const distMap = {};
-    data.districts.forEach(d => { distMap[d.district] = d; });
+    // District change - auto fill level
     document.getElementById("inp-district").addEventListener("change", function() {
-      const d = distMap[this.value];
+      const state = document.getElementById("inp-state").value;
+      const key = this.value + "_" + state;
+      const d = window._distMap[key] || Object.values(window._distMap).find(x => x.district === this.value);
       if (d) {
         document.getElementById("inp-level").value = d.latest_level.toFixed(1);
         document.getElementById("inp-state").value = d.state;
       }
     });
+
+    // Initialize with all districts
+    updateDistrictDropdown("");
+
   } catch(e) { console.error("District load:", e); }
+}
+
+function updateDistrictDropdown(state) {
+  const distEl = document.getElementById("inp-district");
+  const districts = state
+    ? window._allDistricts.filter(d => d.state === state)
+    : window._allDistricts;
+
+  // Clear and rebuild options
+  distEl.innerHTML = '<option value="">Select District</option>' +
+    districts.map(d => '<option value="'+d.district+'">'+d.district+'</option>').join("");
+}
+
+function renderRecommendations(risk, level, district, state) {
+  const el = document.getElementById("recommendations");
+  if (!el) return;
+
+  const configs = {
+    CRITICAL: {
+      color: "#E24B4A",
+      bg: "#FFF0F0",
+      border: "rgba(226,75,74,0.3)",
+      icon: "🚨",
+      title: "CRITICAL ALERT — Immediate Action Required",
+      urgency: "This district requires emergency intervention. Wells may run dry within 1-2 seasons.",
+      actions: [
+        { icon: "🚫", text: "Immediately ban new borewell drilling in this district" },
+        { icon: "💧", text: "Implement mandatory water rationing — restrict extraction to essential use only" },
+        { icon: "🌧️", text: "Deploy artificial recharge structures (check dams, percolation ponds) on priority" },
+        { icon: "🌾", text: "Shift from water-intensive crops (sugarcane, paddy) to drought-resistant crops (millets, pulses)" },
+        { icon: "📊", text: "Set up real-time groundwater monitoring with automated alerts" },
+        { icon: "🏛️", text: "Issue district-level groundwater emergency order under CGWB guidelines" },
+        { icon: "💰", text: "Apply for PM Krishi Sinchayee Yojana funds for micro-irrigation" },
+      ],
+      avoid: [
+        "Don't approve new industrial water connections",
+        "Don't allow irrigation from groundwater for non-essential crops",
+        "Don't delay recharge measures — every monsoon counts",
+      ]
+    },
+    WARNING: {
+      color: "#EF9F27",
+      bg: "#FFF8ED",
+      border: "rgba(239,159,39,0.3)",
+      icon: "⚠️",
+      title: "WARNING — Conservation Measures Needed",
+      urgency: "Depletion is accelerating. Without intervention, this district could reach Critical status within 2 years.",
+      actions: [
+        { icon: "📋", text: "Register all existing borewells and impose extraction limits" },
+        { icon: "🌧️", text: "Build rooftop rainwater harvesting systems in urban and rural areas" },
+        { icon: "🚿", text: "Install drip/sprinkler irrigation — reduces water use by 40-60%" },
+        { icon: "🌳", text: "Plant native trees along water bodies to improve natural recharge" },
+        { icon: "📚", text: "Run farmer awareness programs on sustainable irrigation practices" },
+        { icon: "🔄", text: "Promote crop rotation to reduce year-round groundwater dependency" },
+      ],
+      avoid: [
+        "Don't approve large new groundwater extraction projects",
+        "Don't ignore seasonal fluctuations — monitor quarterly",
+        "Don't rely on single water source — diversify to surface water where possible",
+      ]
+    },
+    STABLE: {
+      color: "#1D9E75",
+      bg: "#E1F5EE",
+      border: "rgba(29,158,117,0.25)",
+      icon: "✅",
+      title: "STABLE — Maintain Current Practices",
+      urgency: "Water levels are within acceptable range. Focus on sustainable management to maintain this status.",
+      actions: [
+        { icon: "📊", text: "Continue regular quarterly monitoring of water levels" },
+        { icon: "🌧️", text: "Maintain existing rainwater harvesting and recharge structures" },
+        { icon: "🌾", text: "Encourage water-efficient farming practices proactively" },
+        { icon: "📋", text: "Keep borewell registry updated and enforce extraction norms" },
+        { icon: "🌳", text: "Increase green cover to enhance natural groundwater recharge" },
+      ],
+      avoid: [
+        "Don't allow rapid increase in new borewells without impact assessment",
+        "Don't ignore early warning signs — monitor trend closely",
+      ]
+    },
+    RECOVERING: {
+      color: "#378ADD",
+      bg: "#EEF4FD",
+      border: "rgba(55,138,221,0.25)",
+      icon: "🔵",
+      title: "RECOVERING — Positive Trend, Sustain It",
+      urgency: "Groundwater levels are improving. Continue and strengthen conservation efforts to maintain recovery.",
+      actions: [
+        { icon: "🎉", text: "Share this success model with neighboring districts" },
+        { icon: "🌧️", text: "Continue and expand rainwater harvesting infrastructure" },
+        { icon: "📊", text: "Document what worked — create a replication blueprint" },
+        { icon: "🌾", text: "Gradually introduce sustainable agriculture practices across all farms" },
+        { icon: "🏛️", text: "Apply for Atal Bhujal Yojana recognition for community water conservation" },
+      ],
+      avoid: [
+        "Don't over-extract now that levels are recovering — maintain discipline",
+        "Don't reduce monitoring frequency — stay vigilant",
+      ]
+    }
+  };
+
+  const cfg = configs[risk] || configs["STABLE"];
+
+  el.innerHTML = `
+    <div style="margin-top:20px;border-radius:12px;border:1px solid ${cfg.border};background:${cfg.bg};overflow:hidden;">
+      
+      <div style="padding:14px 18px;border-bottom:1px solid ${cfg.border};display:flex;align-items:center;gap:10px;">
+        <span style="font-size:20px;">${cfg.icon}</span>
+        <div>
+          <p style="font-weight:700;font-size:14px;color:${cfg.color};margin:0;">${cfg.title}</p>
+          <p style="font-size:12px;color:var(--text-2);margin:2px 0 0;">${cfg.urgency}</p>
+        </div>
+      </div>
+
+      <div style="padding:16px 18px;">
+        <p style="font-weight:600;font-size:12px;color:var(--text-2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;">
+          ✅ Recommended Actions for ${district}, ${state}
+        </p>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
+          ${cfg.actions.map(a => `
+            <div style="display:flex;gap:10px;align-items:flex-start;padding:8px 12px;background:white;border-radius:8px;border:1px solid rgba(0,0,0,0.06);">
+              <span style="font-size:16px;flex-shrink:0;">${a.icon}</span>
+              <span style="font-size:13px;color:var(--text-1);line-height:1.5;">${a.text}</span>
+            </div>
+          `).join("")}
+        </div>
+
+        <p style="font-weight:600;font-size:12px;color:#E24B4A;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">
+          ❌ What to Avoid
+        </p>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          ${cfg.avoid.map(a => `
+            <div style="display:flex;gap:8px;align-items:flex-start;padding:6px 12px;background:rgba(226,75,74,0.05);border-radius:8px;">
+              <span style="color:#E24B4A;flex-shrink:0;font-size:13px;">✗</span>
+              <span style="font-size:12.5px;color:var(--text-2);line-height:1.5;">${a}</span>
+            </div>
+          `).join("")}
+        </div>
+
+        <div style="margin-top:14px;padding:10px 14px;background:rgba(0,0,0,0.03);border-radius:8px;">
+          <p style="font-size:11px;color:var(--text-3);margin:0;">
+            📌 Based on CGWB classification guidelines and Ministry of Jal Shakti conservation protocols.
+            Data source: Central Ground Water Board (CGWB) India.
+          </p>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 document.addEventListener("DOMContentLoaded", () => { 

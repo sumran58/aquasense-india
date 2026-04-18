@@ -206,11 +206,15 @@ async def get_geojson(db: Session = Depends(get_db)):
     if cached: return cached
 
     rows = db.execute(text("""
-        SELECT DISTINCT district, state, water_level_mbgl, latitude, longitude, year, quarter
+        SELECT district, state, 
+               AVG(water_level_mbgl) as water_level_mbgl,
+               AVG(latitude) as latitude, 
+               AVG(longitude) as longitude,
+               MAX(year) as year, MAX(quarter) as quarter
         FROM groundwater_readings
         WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        GROUP BY district, state
         ORDER BY water_level_mbgl DESC
-        LIMIT 300
     """)).fetchall()
 
     features = []
