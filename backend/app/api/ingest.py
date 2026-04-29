@@ -201,6 +201,44 @@ async def seed_demo(db: Session = Depends(get_db)):
         pd.DataFrame(rows).to_sql("groundwater_readings", conn, if_exists="append", index=False)
     return {"message": f"Seeded {len(rows):,} demo records"}
 
+@router.post("/retrain")
+async def retrain_model(db: Session = Depends(get_db)):
+    """Retrain XGBoost with recursive-aware training."""
+    from app.ml.pipeline import train_xgboost_recursive, _predictor_instance
+    import app.ml.pipeline as pipeline_module
+    
+    count = db.query(func.count(GroundwaterReading.id)).scalar() or 0
+    if count == 0:
+        raise HTTPException(400, "No data in DB. Upload CSV first.")
+    
+    # Pull all data from DB
+    rows = db.query(GroundwaterReading).all()
+    df = pd.DataFrame([{
+        "district": r.district,
+        "state": r.state,
+        "year": r.year,
+        "quarter": r.quarter,
+        "water_level_mbgl": r.water_level_mbgl,
+        "rainfall_mm": r.rainfall_mm if r.rainfall_mm else 0.0,
+        "latitude": r.latitude,
+        "longitude": r.longitude,
+        "population_density": 0.0,
+        "agricultural_area_pct": 0.0,
+        "irrigation_wells_per_km2": 0.0,
+        "ndvi_mean": 0.0,
+    } for r in rows])
+    
+    # Train recursive-aware model
+    model = train_xgboost_recursive(df)
+    
+    # Reset the singleton so it loads the new model
+    pipeline_module._predictor_instance = None
+    
+    return {
+        "message": f"Model retrained on {len(df):,} records with recursive-aware training",
+        "districts": int(df["district"].nunique()),
+    }
+
 
 @router.delete("/clear")
 async def clear_data(db: Session = Depends(get_db)):
