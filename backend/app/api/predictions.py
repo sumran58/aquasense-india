@@ -4,11 +4,12 @@ from sqlalchemy import text
 from pydantic import BaseModel, Field
 from typing import List
 import numpy as np
+import pandas as pd
 import time
 
 from app.utils.database import get_db, GroundwaterReading, DistrictPrediction, DistrictMeta
 from app.utils.config import classify_risk, RISK_META
-from app.ml.pipeline import AquaSensePredictor
+from app.ml.pipeline import AquaSensePredictor, engineer_features, FEATURE_COLUMNS
 
 router = APIRouter()
 _predictor = None
@@ -55,55 +56,108 @@ class PredictionOut(BaseModel):
     predictions: List[dict]
 
 
+def build_features_from_history(district: str, db: Session, user_overrides: dict = None):
+    """
+    Build ML features using the EXACT SAME method as training.
+    
+    Instead of manually constructing lags/rolling stats (which caused all the bugs),
+    we pull the district's full history, run it through engineer_features() — the same
+    function used during training — and take the last row's features.
+    
+    This guarantees feature parity between training and inference.
+    """
+    
+    # Pull ALL readings for this district (same as training data)
+    readings = (db.query(GroundwaterReading)
+        .filter(GroundwaterReading.district == district)
+        .order_by(GroundwaterReading.year, GroundwaterReading.quarter)
+        .all())
+    
+    if not readings:
+        return None
+    
+    # Build a DataFrame exactly like the training pipeline expects
+    rows = []
+    for r in readings:
+        rows.append({
+            "district": r.district,
+            "state": r.state,
+            "year": r.year,
+            "quarter": r.quarter,
+            "water_level_mbgl": r.water_level_mbgl,
+            "rainfall_mm": r.rainfall_mm if r.rainfall_mm else 0.0,
+            "latitude": r.latitude,
+            "longitude": r.longitude,
+            "population_density": user_overrides.get("population_density", 0.0) if user_overrides else 0.0,
+            "agricultural_area_pct": user_overrides.get("agricultural_area_pct", 0.0) if user_overrides else 0.0,
+            "irrigation_wells_per_km2": user_overrides.get("irrigation_wells_per_km2", 0.0) if user_overrides else 0.0,
+            "ndvi_mean": user_overrides.get("ndvi_mean", 0.0) if user_overrides else 0.0,
+        })
+    
+    df = pd.DataFrame(rows)
+    
+    # Run through the SAME engineer_features() used during training
+    df_feat = engineer_features(df)
+    
+    # Take the last row — this has all correctly computed lags, rolling stats, etc.
+    last_row = df_feat.iloc[-1]
+    
+    # Extract features as dict
+    features = {}
+    for col in FEATURE_COLUMNS:
+        if col in last_row.index:
+            val = last_row[col]
+            features[col] = float(val) if pd.notna(val) else 0.0
+        else:
+            features[col] = 0.0
+    
+    # Apply user overrides for non-historical features
+    if user_overrides:
+        if "rainfall_mm" in user_overrides:
+            features["rainfall_mm"] = user_overrides["rainfall_mm"]
+        if "population_density" in user_overrides:
+            features["population_density"] = user_overrides["population_density"]
+        if "agricultural_area_pct" in user_overrides:
+            features["agricultural_area_pct"] = user_overrides["agricultural_area_pct"]
+        if "irrigation_wells_per_km2" in user_overrides:
+            features["irrigation_wells_per_km2"] = user_overrides["irrigation_wells_per_km2"]
+        if "ndvi_mean" in user_overrides:
+            features["ndvi_mean"] = user_overrides["ndvi_mean"]
+    
+    # If user provided a different current level, update lag_1q
+    if user_overrides and "current_level_mbgl" in user_overrides:
+        db_latest = last_row["water_level_mbgl"] if "water_level_mbgl" in last_row.index else features["level_lag_1q"]
+        user_level = user_overrides["current_level_mbgl"]
+        if abs(user_level - db_latest) > 0.01:
+            features["level_lag_1q"] = user_level
+    
+    return features
+
+
 @router.post("/district", response_model=PredictionOut)
 async def predict_district(req: PredictRequest, db: Session = Depends(get_db)):
     predictor = get_predictor()
     if not predictor.is_trained():
         raise HTTPException(503, "Model not trained.")
 
-    # ── Get ALL historical readings for this district ──
-    historical = (db.query(GroundwaterReading)
-        .filter(GroundwaterReading.district == req.district)
-        .order_by(GroundwaterReading.year.desc(), GroundwaterReading.quarter.desc())
-        .limit(8).all())
-
-    if not historical:
+    # Build features using the SAME function as training
+    features = build_features_from_history(
+        district=req.district,
+        db=db,
+        user_overrides={
+            "current_level_mbgl": req.current_level_mbgl,
+            "rainfall_mm": req.rainfall_mm_last_quarter,
+            "population_density": req.population_density,
+            "agricultural_area_pct": req.agricultural_area_pct,
+            "irrigation_wells_per_km2": req.irrigation_wells_per_km2,
+            "ndvi_mean": req.ndvi_mean,
+        }
+    )
+    
+    if features is None:
         raise HTTPException(404, f"No data found for {req.district}")
 
-    levels = [r.water_level_mbgl for r in historical]
-    
-    # DON'T shift all levels — just use real history
-    # If user overrides current level, only override lag_1q
-    current = req.current_level_mbgl
-
-    features = {
-        "level_lag_1q": current,
-        "level_lag_2q": levels[1] if len(levels) > 1 else current,
-        "level_lag_4q": levels[3] if len(levels) > 3 else levels[-1],
-        "level_lag_8q": levels[7] if len(levels) > 7 else levels[-1],
-        "level_roll_mean_4q": float(np.mean([current] + levels[1:3])) if len(levels) > 2 else current,
-        "level_roll_mean_8q": float(np.mean([current] + levels[1:7])) if len(levels) > 6 else float(np.mean(levels)),
-        "level_roll_std_4q": float(np.std(levels[:4])) if len(levels) >= 4 else 0.5,
-        "level_roll_min_4q": float(min(levels[:4])),
-        "yoy_change": current - levels[3] if len(levels) > 3 else 0.0,
-        "level_accel": (current - 2*levels[1] + levels[2]) if len(levels) > 2 else 0.0,
-        "consecutive_depletion": sum(1 for j in range(len(levels)-1) if levels[j] > levels[j+1]),
-        "rainfall_mm": req.rainfall_mm_last_quarter,
-        "rainfall_lag_1q": req.rainfall_mm_last_quarter,
-        "rainfall_deficit": 0.0,
-        "cum_deficit_4q": 0.0,
-        "population_density": req.population_density,
-        "agricultural_area_pct": req.agricultural_area_pct,
-        "irrigation_wells_per_km2": req.irrigation_wells_per_km2,
-        "ndvi_mean": req.ndvi_mean,
-        "quarter": (historical[0].quarter % 4) + 1,
-        "year_normalized": 0.9,
-        "is_monsoon": 1 if ((historical[0].quarter % 4) + 1) == 3 else 0,
-        "is_rabi": 1 if ((historical[0].quarter % 4) + 1) in [1, 4] else 0,
-    }
-    
-
-    preds = get_predictor().predict_district(features, quarters_ahead=req.quarters_ahead)
+    preds = predictor.predict_district(features, quarters_ahead=req.quarters_ahead)
     worst = max(preds, key=lambda p: RISK_META[p["risk_level"]]["priority"])
     current = features["level_lag_1q"]
     delta = preds[-1]["predicted_level_mbgl"] - current
@@ -118,6 +172,7 @@ async def predict_district(req: PredictRequest, db: Session = Depends(get_db)):
         risk_color=RISK_META[worst["risk_level"]]["color"],
         summary=summary, predictions=preds)
 
+
 @router.get("/stats")
 async def prediction_stats(db: Session = Depends(get_db)):
     predictor = get_predictor()
@@ -127,8 +182,6 @@ async def prediction_stats(db: Session = Depends(get_db)):
         return cached
 
     try:
-        # Single fast query - no joins, no subqueries
-        # Use per-district averages for accurate risk classification
         row = db.execute(text("""
             SELECT
                 COUNT(*) as districts,

@@ -111,7 +111,7 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ─────────────────────────────────────────────
-# PREDICTOR CLASS (FIXED)
+# PREDICTOR CLASS
 # ─────────────────────────────────────────────
 
 class AquaSensePredictor:
@@ -135,6 +135,13 @@ class AquaSensePredictor:
         return self.model.predict(X)
 
     def predict_district(self, features: dict, quarters_ahead=4):
+        """
+        Multi-step recursive forecast.
+        
+        The model predicts freely — no artificial clamps or caps.
+        Features are updated properly after each step so the model
+        sees realistic input for the next quarter.
+        """
 
         df = pd.DataFrame([features])
         df = df.reindex(columns=self.features, fill_value=0)
@@ -142,7 +149,7 @@ class AquaSensePredictor:
         preds = []
         base = df.copy()
 
-        # Track recent predictions for rolling stat updates
+        # Build history from the lag values that came from real data
         recent_levels = [
             float(base["level_lag_1q"].iloc[0]),
             float(base["level_lag_2q"].iloc[0]),
@@ -156,17 +163,8 @@ class AquaSensePredictor:
 
             pred = float(self.predict(base)[0])
 
-            # Can't be negative
+            # Only physical constraint: water level can't be negative
             pred = max(0, pred)
-
-            # Dynamic delta constraint based on district's historical volatility
-            prev = float(base["level_lag_1q"].iloc[0])
-            std = float(base["level_roll_std_4q"].iloc[0])
-            max_delta = max(2.0, std * 3)
-
-            delta = pred - prev
-            if abs(delta) > max_delta:
-                pred = prev + (max_delta if delta > 0 else -max_delta)
 
             risk = classify_risk(pred)
 
@@ -180,7 +178,7 @@ class AquaSensePredictor:
 
             # ── Recursive feature update for next quarter ──
 
-            # Shift lag chain
+            # Shift lag chain properly
             old_lag1 = float(base["level_lag_1q"].iloc[0])
             old_lag2 = float(base["level_lag_2q"].iloc[0])
             old_lag4 = float(base["level_lag_4q"].iloc[0])
@@ -190,7 +188,7 @@ class AquaSensePredictor:
             base["level_lag_4q"] = old_lag2
             base["level_lag_8q"] = old_lag4
 
-            # Rolling updates
+            # Update rolling stats with all predictions so far
             recent_levels.insert(0, pred)
             window_4 = recent_levels[:4]
             window_8 = recent_levels[:8]
@@ -206,7 +204,7 @@ class AquaSensePredictor:
             else:
                 base["yoy_change"] = pred - recent_levels[-1]
 
-            # Acceleration
+            # Acceleration (second derivative)
             base["level_accel"] = pred - 2 * old_lag1 + old_lag2
 
             # Advance quarter (1->2->3->4->1...)
