@@ -72,7 +72,12 @@ async def predict_district(req: PredictRequest, db: Session = Depends(get_db)):
 
     levels = [r.water_level_mbgl for r in historical]
 
-    # ── Build features from REAL data ──
+    # ── FIX: Adjust ALL lags if user changes current value ──
+    if abs(req.current_level_mbgl - levels[0]) > 0.01:
+        delta = req.current_level_mbgl - levels[0]
+        levels = [l + delta for l in levels]
+
+    # ── Build features from REAL (corrected) data ──
     features = {
         "level_lag_1q": levels[0],
         "level_lag_2q": levels[1] if len(levels) > 1 else levels[0],
@@ -216,7 +221,7 @@ async def get_geojson(db: Session = Depends(get_db)):
 
     features = []
     for r in rows:
-        risk = classify_risk(r.water_level_mbgl)
+        risk = classify_risk(r.water_level_mbgl)    
         features.append({
             "type": "Feature",
             "geometry": {"type": "Point", "coordinates": [r.longitude, r.latitude]},
