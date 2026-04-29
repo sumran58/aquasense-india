@@ -200,25 +200,78 @@ class AquaSensePredictor:
         preds = []
         base = df.copy()
 
+        # Track recent predictions for rolling stat updates
+        recent_levels = [
+            float(base["level_lag_1q"].iloc[0]),
+            float(base["level_lag_2q"].iloc[0]),
+            float(base["level_lag_4q"].iloc[0]),
+            float(base["level_lag_8q"].iloc[0]),
+        ]
+
+        current_quarter = int(base["quarter"].iloc[0])
+
         for i in range(quarters_ahead):
 
             pred = float(self.predict(base)[0])
+            pred = max(0, pred)  # water level can't be negative
 
             risk = classify_risk(pred)
 
             preds.append({
                 "quarter": i + 1,
-                "predicted_level_mbgl": pred,
+                "predicted_level_mbgl": round(pred, 2),
                 "risk_level": risk,
                 "risk_label": RISK_META[risk]["label"],
                 "risk_message": RISK_META[risk]["message"],
             })
 
-            # recursive update
+            # ── Recursive feature update for next quarter ──
+
+            # Shift lag chain: each lag moves one step back
+            old_lag1 = float(base["level_lag_1q"].iloc[0])
+            old_lag2 = float(base["level_lag_2q"].iloc[0])
+            old_lag4 = float(base["level_lag_4q"].iloc[0])
+
             base["level_lag_1q"] = pred
+            base["level_lag_2q"] = old_lag1
+            base["level_lag_4q"] = old_lag2
+            base["level_lag_8q"] = old_lag4
+
+            # Update rolling stats with prediction history
+            recent_levels.insert(0, pred)
+            window_4 = recent_levels[:4]
+            window_8 = recent_levels[:8]
+
+            base["level_roll_mean_4q"] = float(np.mean(window_4))
+            base["level_roll_mean_8q"] = float(np.mean(window_8))
+            base["level_roll_std_4q"] = float(np.std(window_4)) if len(window_4) > 1 else 0.0
+            base["level_roll_min_4q"] = float(min(window_4))
+
+            # Year-over-year change (current pred vs 4 quarters ago)
+            if len(recent_levels) > 4:
+                base["yoy_change"] = pred - recent_levels[4]
+            else:
+                base["yoy_change"] = pred - recent_levels[-1]
+
+            # Acceleration
+            base["level_accel"] = pred - 2 * old_lag1 + old_lag2
+
+            # Advance quarter (1->2->3->4->1...)
+            current_quarter = (current_quarter % 4) + 1
+            base["quarter"] = current_quarter
+            base["is_monsoon"] = 1 if current_quarter == 3 else 0
+            base["is_rabi"] = 1 if current_quarter in [1, 4] else 0
+
+            # Advance year normalization slightly
+            base["year_normalized"] = float(base["year_normalized"].iloc[0]) + (0.25 / 10)
+
+            # Consecutive depletion tracker
+            if pred > old_lag1:
+                base["consecutive_depletion"] = int(base["consecutive_depletion"].iloc[0]) + 1
+            else:
+                base["consecutive_depletion"] = 0
 
         return preds
-
 
 # ─────────────────────────────────────────────
 # SINGLETON (USE THIS IN API)
