@@ -111,65 +111,7 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ─────────────────────────────────────────────
-# TRAIN XGBOOST
-# ─────────────────────────────────────────────
-
-def train_xgboost(df: pd.DataFrame):
-
-    df_feat = engineer_features(df)
-
-    X = df_feat.reindex(columns=FEATURE_COLUMNS).fillna(0)
-    y = df_feat[TARGET]
-
-    split = int(len(df_feat) * 0.8)
-    X_train, X_test = X.iloc[:split], X.iloc[split:]
-    y_train, y_test = y.iloc[:split], y.iloc[split:]
-
-    model = xgb.XGBRegressor(
-        n_estimators=600,
-        max_depth=6,
-        learning_rate=0.04,
-        subsample=0.8,
-        colsample_bytree=0.8,
-        random_state=42,
-        n_jobs=-1,
-    )
-
-    model.fit(X_train, y_train)
-
-    # ── Evaluation (IMPORTANT)
-    y_pred = model.predict(X_test)
-
-    print("MAE:", mean_absolute_error(y_test, y_pred))
-    print("RMSE:", np.sqrt(mean_squared_error(y_test, y_pred)))
-    print("R2:", r2_score(y_test, y_pred))
-
-    # Save artifacts
-    joblib.dump(model, MODEL_DIR / "xgb_model.pkl")
-    joblib.dump(FEATURE_COLUMNS, MODEL_DIR / "feature_names.pkl")
-
-    return model
-
-
-# ─────────────────────────────────────────────
-# ANOMALY DETECTOR
-# ─────────────────────────────────────────────
-
-def train_anomaly_detector(df: pd.DataFrame):
-
-    df_feat = engineer_features(df)
-
-    cols = ["level_accel", "yoy_change", "rainfall_deficit", "level_roll_std_4q"]
-    X = df_feat[cols].fillna(0)
-
-    iso = IsolationForest(contamination=0.05, random_state=42)
-    iso.fit(X)
-
-    joblib.dump(iso, MODEL_DIR / "isolation_forest.pkl")
-
-
-# ─────────────────────────────────────────────
-# PREDICTOR CLASS (FIXED + FULL API SUPPORT)
+# PREDICTOR CLASS (FIXED)
 # ─────────────────────────────────────────────
 
 class AquaSensePredictor:
@@ -200,7 +142,6 @@ class AquaSensePredictor:
         preds = []
         base = df.copy()
 
-        # Track recent predictions for rolling stat updates
         recent_levels = [
             float(base["level_lag_1q"].iloc[0]),
             float(base["level_lag_2q"].iloc[0]),
@@ -213,7 +154,19 @@ class AquaSensePredictor:
         for i in range(quarters_ahead):
 
             pred = float(self.predict(base)[0])
-            pred = max(0, pred)  # water level can't be negative
+
+            # 🔒 HARD LIMIT
+            MAX_LEVEL = 20
+            MIN_LEVEL = 0
+            pred = max(MIN_LEVEL, min(pred, MAX_LEVEL))
+
+            # 🔒 LIMIT CHANGE PER QUARTER
+            prev = float(base["level_lag_1q"].iloc[0])
+            MAX_DELTA = 2.5
+
+            delta = pred - prev
+            delta = max(-MAX_DELTA, min(delta, MAX_DELTA))
+            pred = prev + delta
 
             risk = classify_risk(pred)
 
@@ -225,9 +178,7 @@ class AquaSensePredictor:
                 "risk_message": RISK_META[risk]["message"],
             })
 
-            # ── Recursive feature update for next quarter ──
-
-            # Shift lag chain: each lag moves one step back
+            # Update lags
             old_lag1 = float(base["level_lag_1q"].iloc[0])
             old_lag2 = float(base["level_lag_2q"].iloc[0])
             old_lag4 = float(base["level_lag_4q"].iloc[0])
@@ -237,7 +188,7 @@ class AquaSensePredictor:
             base["level_lag_4q"] = old_lag2
             base["level_lag_8q"] = old_lag4
 
-            # Update rolling stats with prediction history
+            # Rolling updates
             recent_levels.insert(0, pred)
             window_4 = recent_levels[:4]
             window_8 = recent_levels[:8]
@@ -247,41 +198,23 @@ class AquaSensePredictor:
             base["level_roll_std_4q"] = float(np.std(window_4)) if len(window_4) > 1 else 0.0
             base["level_roll_min_4q"] = float(min(window_4))
 
-            # Year-over-year change (current pred vs 4 quarters ago)
             if len(recent_levels) > 4:
                 base["yoy_change"] = pred - recent_levels[4]
             else:
                 base["yoy_change"] = pred - recent_levels[-1]
 
-            # Acceleration
             base["level_accel"] = pred - 2 * old_lag1 + old_lag2
 
-            # Advance quarter (1->2->3->4->1...)
             current_quarter = (current_quarter % 4) + 1
             base["quarter"] = current_quarter
             base["is_monsoon"] = 1 if current_quarter == 3 else 0
             base["is_rabi"] = 1 if current_quarter in [1, 4] else 0
 
-            # Advance year normalization slightly
             base["year_normalized"] = float(base["year_normalized"].iloc[0]) + (0.25 / 10)
 
-            # Consecutive depletion tracker
             if pred > old_lag1:
                 base["consecutive_depletion"] = int(base["consecutive_depletion"].iloc[0]) + 1
             else:
                 base["consecutive_depletion"] = 0
 
         return preds
-
-# ─────────────────────────────────────────────
-# SINGLETON (USE THIS IN API)
-# ─────────────────────────────────────────────
-
-_predictor_instance = None
-
-
-def get_predictor():
-    global _predictor_instance
-    if _predictor_instance is None:
-        _predictor_instance = AquaSensePredictor()
-    return _predictor_instance
