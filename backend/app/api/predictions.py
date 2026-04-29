@@ -71,24 +71,22 @@ async def predict_district(req: PredictRequest, db: Session = Depends(get_db)):
         raise HTTPException(404, f"No data found for {req.district}")
 
     levels = [r.water_level_mbgl for r in historical]
+    
+    # DON'T shift all levels — just use real history
+    # If user overrides current level, only override lag_1q
+    current = req.current_level_mbgl
 
-    # ── FIX: Adjust ALL lags if user changes current value ──
-    if abs(req.current_level_mbgl - levels[0]) > 0.01:
-        delta = req.current_level_mbgl - levels[0]
-        levels = [l + delta for l in levels]
-
-    # ── Build features from REAL (corrected) data ──
     features = {
-        "level_lag_1q": levels[0],
-        "level_lag_2q": levels[1] if len(levels) > 1 else levels[0],
+        "level_lag_1q": current,
+        "level_lag_2q": levels[1] if len(levels) > 1 else current,
         "level_lag_4q": levels[3] if len(levels) > 3 else levels[-1],
         "level_lag_8q": levels[7] if len(levels) > 7 else levels[-1],
-        "level_roll_mean_4q": float(np.mean(levels[:4])),
-        "level_roll_mean_8q": float(np.mean(levels[:min(8, len(levels))])),
+        "level_roll_mean_4q": float(np.mean([current] + levels[1:3])) if len(levels) > 2 else current,
+        "level_roll_mean_8q": float(np.mean([current] + levels[1:7])) if len(levels) > 6 else float(np.mean(levels)),
         "level_roll_std_4q": float(np.std(levels[:4])) if len(levels) >= 4 else 0.5,
         "level_roll_min_4q": float(min(levels[:4])),
-        "yoy_change": levels[0] - levels[3] if len(levels) > 3 else 0.0,
-        "level_accel": (levels[0] - 2*levels[1] + levels[2]) if len(levels) > 2 else 0.0,
+        "yoy_change": current - levels[3] if len(levels) > 3 else 0.0,
+        "level_accel": (current - 2*levels[1] + levels[2]) if len(levels) > 2 else 0.0,
         "consecutive_depletion": sum(1 for j in range(len(levels)-1) if levels[j] > levels[j+1]),
         "rainfall_mm": req.rainfall_mm_last_quarter,
         "rainfall_lag_1q": req.rainfall_mm_last_quarter,
@@ -103,10 +101,7 @@ async def predict_district(req: PredictRequest, db: Session = Depends(get_db)):
         "is_monsoon": 1 if ((historical[0].quarter % 4) + 1) == 3 else 0,
         "is_rabi": 1 if ((historical[0].quarter % 4) + 1) in [1, 4] else 0,
     }
-
-    # ── Override lag_1q with user input if they changed it ──
-    if abs(req.current_level_mbgl - levels[0]) > 0.01:
-        features["level_lag_1q"] = req.current_level_mbgl
+    
 
     preds = get_predictor().predict_district(features, quarters_ahead=req.quarters_ahead)
     worst = max(preds, key=lambda p: RISK_META[p["risk_level"]]["priority"])

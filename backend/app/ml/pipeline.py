@@ -142,6 +142,7 @@ class AquaSensePredictor:
         preds = []
         base = df.copy()
 
+        # Track recent predictions for rolling stat updates
         recent_levels = [
             float(base["level_lag_1q"].iloc[0]),
             float(base["level_lag_2q"].iloc[0]),
@@ -155,18 +156,17 @@ class AquaSensePredictor:
 
             pred = float(self.predict(base)[0])
 
-            # 🔒 HARD LIMIT
-            MAX_LEVEL = 20
-            MIN_LEVEL = 0
-            pred = max(MIN_LEVEL, min(pred, MAX_LEVEL))
+            # Can't be negative
+            pred = max(0, pred)
 
-            # 🔒 LIMIT CHANGE PER QUARTER
+            # Dynamic delta constraint based on district's historical volatility
             prev = float(base["level_lag_1q"].iloc[0])
-            MAX_DELTA = 2.5
+            std = float(base["level_roll_std_4q"].iloc[0])
+            max_delta = max(2.0, std * 3)
 
             delta = pred - prev
-            delta = max(-MAX_DELTA, min(delta, MAX_DELTA))
-            pred = prev + delta
+            if abs(delta) > max_delta:
+                pred = prev + (max_delta if delta > 0 else -max_delta)
 
             risk = classify_risk(pred)
 
@@ -178,7 +178,9 @@ class AquaSensePredictor:
                 "risk_message": RISK_META[risk]["message"],
             })
 
-            # Update lags
+            # ── Recursive feature update for next quarter ──
+
+            # Shift lag chain
             old_lag1 = float(base["level_lag_1q"].iloc[0])
             old_lag2 = float(base["level_lag_2q"].iloc[0])
             old_lag4 = float(base["level_lag_4q"].iloc[0])
@@ -198,23 +200,42 @@ class AquaSensePredictor:
             base["level_roll_std_4q"] = float(np.std(window_4)) if len(window_4) > 1 else 0.0
             base["level_roll_min_4q"] = float(min(window_4))
 
+            # Year-over-year change
             if len(recent_levels) > 4:
                 base["yoy_change"] = pred - recent_levels[4]
             else:
                 base["yoy_change"] = pred - recent_levels[-1]
 
+            # Acceleration
             base["level_accel"] = pred - 2 * old_lag1 + old_lag2
 
+            # Advance quarter (1->2->3->4->1...)
             current_quarter = (current_quarter % 4) + 1
             base["quarter"] = current_quarter
             base["is_monsoon"] = 1 if current_quarter == 3 else 0
             base["is_rabi"] = 1 if current_quarter in [1, 4] else 0
 
+            # Advance year normalization
             base["year_normalized"] = float(base["year_normalized"].iloc[0]) + (0.25 / 10)
 
+            # Consecutive depletion tracker
             if pred > old_lag1:
                 base["consecutive_depletion"] = int(base["consecutive_depletion"].iloc[0]) + 1
             else:
                 base["consecutive_depletion"] = 0
 
         return preds
+
+
+# ─────────────────────────────────────────────
+# SINGLETON (USE THIS IN API)
+# ─────────────────────────────────────────────
+
+_predictor_instance = None
+
+
+def get_predictor():
+    global _predictor_instance
+    if _predictor_instance is None:
+        _predictor_instance = AquaSensePredictor()
+    return _predictor_instance
