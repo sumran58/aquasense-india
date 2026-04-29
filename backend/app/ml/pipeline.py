@@ -157,14 +157,10 @@ def train_xgboost(df: pd.DataFrame):
 # TRAIN XGBOOST (RECURSIVE-AWARE)
 # ─────────────────────────────────────────────
 
-def train_xgboost_recursive(df: pd.DataFrame):
+def train_xgboost_recursive_fast(df: pd.DataFrame):
     """
-    Two-stage training for recursive multi-step forecasting.
-    
-    Stage 1: Train standard model on real data.
-    Stage 2: Use model's own predictions as features to generate
-             recursive training examples, then retrain on combined data.
-             This teaches the model to handle its own output as input.
+    Fast recursive-aware training.
+    Only samples a few starting points per district instead of all.
     """
 
     df_feat = engineer_features(df)
@@ -177,24 +173,21 @@ def train_xgboost_recursive(df: pd.DataFrame):
     y_train, y_test = y.iloc[:split], y.iloc[split:]
 
     # Stage 1: Train initial model
-    print("Stage 1: Training initial model...")
+    print("Stage 1: Training initial model...", flush=True)
     model = xgb.XGBRegressor(
-        n_estimators=600,
-        max_depth=6,
-        learning_rate=0.04,
+        n_estimators=300,
+        max_depth=5,
+        learning_rate=0.05,
         subsample=0.8,
         colsample_bytree=0.8,
         random_state=42,
         n_jobs=-1,
     )
     model.fit(X_train, y_train)
+    print(f"  Stage 1 done. R2: {r2_score(y_test, model.predict(X_test)):.4f}", flush=True)
 
-    y_pred_s1 = model.predict(X_test)
-    print(f"  Stage 1 MAE:  {mean_absolute_error(y_test, y_pred_s1):.4f}")
-    print(f"  Stage 1 R2:   {r2_score(y_test, y_pred_s1):.4f}")
-
-    # Stage 2: Generate recursive training data
-    print("Stage 2: Generating recursive training examples...")
+    # Stage 2: Generate recursive examples (FAST — sample only 3 points per district)
+    print("Stage 2: Generating recursive examples (fast)...", flush=True)
     recursive_X = []
     recursive_y = []
 
@@ -203,7 +196,10 @@ def train_xgboost_recursive(df: pd.DataFrame):
         if len(d) < 8:
             continue
 
-        for start_idx in range(4, len(d) - 4):
+        # Only sample 3 starting points per district (not all)
+        sample_indices = np.linspace(4, len(d) - 5, min(3, len(d) - 9), dtype=int)
+
+        for start_idx in sample_indices:
             row = d.iloc[start_idx]
             base_features = {
                 col: float(row[col]) if pd.notna(row[col]) else 0.0
@@ -242,11 +238,11 @@ def train_xgboost_recursive(df: pd.DataFrame):
                 base_df["is_monsoon"] = 1 if next_q == 3 else 0
                 base_df["is_rabi"] = 1 if next_q in [1, 4] else 0
 
-    print(f"  Generated {len(recursive_X)} recursive training examples")
+    print(f"  Generated {len(recursive_X)} recursive examples", flush=True)
 
-    # Stage 3: Retrain on combined data
+    # Stage 3: Retrain
     if recursive_X:
-        print("Stage 3: Retraining on combined dataset...")
+        print("Stage 3: Retraining on combined data...", flush=True)
         rec_X = pd.DataFrame(recursive_X, columns=FEATURE_COLUMNS)
         rec_y = pd.Series(recursive_y)
 
@@ -254,9 +250,9 @@ def train_xgboost_recursive(df: pd.DataFrame):
         y_combined = pd.concat([y_train, rec_y], ignore_index=True)
 
         model_final = xgb.XGBRegressor(
-            n_estimators=600,
-            max_depth=6,
-            learning_rate=0.04,
+            n_estimators=300,
+            max_depth=5,
+            learning_rate=0.05,
             subsample=0.8,
             colsample_bytree=0.8,
             random_state=42,
@@ -265,24 +261,16 @@ def train_xgboost_recursive(df: pd.DataFrame):
         model_final.fit(X_combined, y_combined)
 
         y_pred = model_final.predict(X_test)
-
-        print("=" * 50)
-        print("RECURSIVE-AWARE MODEL METRICS:")
-        print(f"  MAE:  {mean_absolute_error(y_test, y_pred):.4f}")
-        print(f"  RMSE: {np.sqrt(mean_squared_error(y_test, y_pred)):.4f}")
-        print(f"  R2:   {r2_score(y_test, y_pred):.4f}")
-        print("=" * 50)
+        print(f"  FINAL R2: {r2_score(y_test, y_pred):.4f}", flush=True)
+        print(f"  FINAL MAE: {mean_absolute_error(y_test, y_pred):.4f}", flush=True)
 
         joblib.dump(model_final, MODEL_DIR / "xgb_model.pkl")
         joblib.dump(FEATURE_COLUMNS, MODEL_DIR / "feature_names.pkl")
-
         return model_final
 
-    print("Warning: No recursive data generated, using standard model")
     joblib.dump(model, MODEL_DIR / "xgb_model.pkl")
     joblib.dump(FEATURE_COLUMNS, MODEL_DIR / "feature_names.pkl")
     return model
-
 
 # ─────────────────────────────────────────────
 # ANOMALY DETECTOR

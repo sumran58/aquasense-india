@@ -203,15 +203,14 @@ async def seed_demo(db: Session = Depends(get_db)):
 
 @router.post("/retrain")
 async def retrain_model(db: Session = Depends(get_db)):
-    """Retrain XGBoost with recursive-aware training."""
-    from app.ml.pipeline import train_xgboost_recursive, _predictor_instance
+    """Retrain XGBoost with recursive-aware training (fast version)."""
+    from app.ml.pipeline import train_xgboost_recursive_fast, FEATURE_COLUMNS, engineer_features
     import app.ml.pipeline as pipeline_module
     
     count = db.query(func.count(GroundwaterReading.id)).scalar() or 0
     if count == 0:
         raise HTTPException(400, "No data in DB. Upload CSV first.")
     
-    # Pull all data from DB
     rows = db.query(GroundwaterReading).all()
     df = pd.DataFrame([{
         "district": r.district,
@@ -228,17 +227,14 @@ async def retrain_model(db: Session = Depends(get_db)):
         "ndvi_mean": 0.0,
     } for r in rows])
     
-    # Train recursive-aware model
-    model = train_xgboost_recursive(df)
+    model = train_xgboost_recursive_fast(df)
     
-    # Reset the singleton so it loads the new model
     pipeline_module._predictor_instance = None
     
     return {
-        "message": f"Model retrained on {len(df):,} records with recursive-aware training",
+        "message": f"Model retrained on {len(df):,} records",
         "districts": int(df["district"].nunique()),
     }
-
 
 @router.delete("/clear")
 async def clear_data(db: Session = Depends(get_db)):
