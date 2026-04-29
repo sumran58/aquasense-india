@@ -61,65 +61,62 @@ async def predict_district(req: PredictRequest, db: Session = Depends(get_db)):
     if not predictor.is_trained():
         raise HTTPException(503, "Model not trained.")
 
+    # ── Get ALL historical readings for this district ──
     historical = (db.query(GroundwaterReading)
         .filter(GroundwaterReading.district == req.district)
         .order_by(GroundwaterReading.year.desc(), GroundwaterReading.quarter.desc())
         .limit(8).all())
 
-    if historical:
-        levels = [r.water_level_mbgl for r in historical]
-        roll_mean = float(np.mean(levels[:4]))
-        roll_std = float(np.std(levels[:4]))
-        yoy_chg = float(levels[0] - levels[-1])
-        rain_vals = [r.rainfall_mm for r in historical if r.rainfall_mm]
-        rain_def = (float(np.mean(rain_vals)) if rain_vals else req.rainfall_mm_last_quarter) - req.rainfall_mm_last_quarter
-    else:
-        levels = [req.current_level_mbgl]
-        roll_mean = req.current_level_mbgl
-        roll_std = 1.0
-        yoy_chg = 0.0
-        rain_def = 0.0
+    if not historical:
+        raise HTTPException(404, f"No data found for {req.district}")
 
+    levels = [r.water_level_mbgl for r in historical]
+
+    # ── Build features from REAL data ──
     features = {
-        "level_lag_1q": req.current_level_mbgl,
-        "level_lag_2q": req.current_level_mbgl * 0.97,
-        "level_lag_4q": req.current_level_mbgl * 0.93,
-        "level_lag_8q": req.current_level_mbgl * 0.88,
-        "level_roll_mean_4q": roll_mean,
-        "level_roll_mean_8q": roll_mean * 0.97,
-        "level_roll_std_4q": roll_std,
-        "level_roll_min_4q": min(levels),
-        "yoy_change": yoy_chg,
-        "level_accel": 0.0,
-        "consecutive_depletion": 2,
+        "level_lag_1q": levels[0],
+        "level_lag_2q": levels[1] if len(levels) > 1 else levels[0],
+        "level_lag_4q": levels[3] if len(levels) > 3 else levels[-1],
+        "level_lag_8q": levels[7] if len(levels) > 7 else levels[-1],
+        "level_roll_mean_4q": float(np.mean(levels[:4])),
+        "level_roll_mean_8q": float(np.mean(levels[:min(8, len(levels))])),
+        "level_roll_std_4q": float(np.std(levels[:4])) if len(levels) >= 4 else 0.5,
+        "level_roll_min_4q": float(min(levels[:4])),
+        "yoy_change": levels[0] - levels[3] if len(levels) > 3 else 0.0,
+        "level_accel": (levels[0] - 2*levels[1] + levels[2]) if len(levels) > 2 else 0.0,
+        "consecutive_depletion": sum(1 for j in range(len(levels)-1) if levels[j] > levels[j+1]),
         "rainfall_mm": req.rainfall_mm_last_quarter,
         "rainfall_lag_1q": req.rainfall_mm_last_quarter,
-        "rainfall_deficit": rain_def,
-        "cum_deficit_4q": rain_def * 3,
+        "rainfall_deficit": 0.0,
+        "cum_deficit_4q": 0.0,
         "population_density": req.population_density,
         "agricultural_area_pct": req.agricultural_area_pct,
         "irrigation_wells_per_km2": req.irrigation_wells_per_km2,
         "ndvi_mean": req.ndvi_mean,
-        "quarter": 1,
-        "year_normalized": 0.8,
-        "is_monsoon": 0,
-        "is_rabi": 1,
+        "quarter": (historical[0].quarter % 4) + 1,
+        "year_normalized": 0.9,
+        "is_monsoon": 1 if ((historical[0].quarter % 4) + 1) == 3 else 0,
+        "is_rabi": 1 if ((historical[0].quarter % 4) + 1) in [1, 4] else 0,
     }
+
+    # ── Override lag_1q with user input if they changed it ──
+    if abs(req.current_level_mbgl - levels[0]) > 0.01:
+        features["level_lag_1q"] = req.current_level_mbgl
 
     preds = get_predictor().predict_district(features, quarters_ahead=req.quarters_ahead)
     worst = max(preds, key=lambda p: RISK_META[p["risk_level"]]["priority"])
-    delta = preds[-1]["predicted_level_mbgl"] - req.current_level_mbgl
+    current = features["level_lag_1q"]
+    delta = preds[-1]["predicted_level_mbgl"] - current
     summary = (f"{req.district} will {'deepen' if delta > 0 else 'recover'} by "
                f"{abs(delta):.1f} mbgl over {req.quarters_ahead} quarters. "
                f"Risk: {worst['risk_label']}.")
 
     return PredictionOut(
         district=req.district, state=req.state,
-        current_level_mbgl=req.current_level_mbgl,
+        current_level_mbgl=current,
         overall_risk=worst["risk_level"],
         risk_color=RISK_META[worst["risk_level"]]["color"],
         summary=summary, predictions=preds)
-
 
 @router.get("/stats")
 async def prediction_stats(db: Session = Depends(get_db)):
