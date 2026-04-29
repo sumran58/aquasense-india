@@ -197,7 +197,10 @@ def train_xgboost_recursive_fast(df: pd.DataFrame):
             continue
 
         # Only sample 3 starting points per district (not all)
-        sample_indices = np.linspace(4, len(d) - 5, min(3, len(d) - 9), dtype=int)
+        n_samples = max(1, min(3, len(d) - 9))
+        if len(d) < 10:
+            continue
+        sample_indices = np.linspace(4, len(d) - 5, n_samples, dtype=int)
 
         for start_idx in sample_indices:
             row = d.iloc[start_idx]
