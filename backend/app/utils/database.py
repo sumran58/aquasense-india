@@ -1,6 +1,6 @@
 from sqlalchemy import (
     create_engine, Column, Integer, Float, String,
-    DateTime, Text, UniqueConstraint
+    DateTime, Text, UniqueConstraint, event
 )
 from sqlalchemy.orm import sessionmaker, declarative_base
 from datetime import datetime
@@ -21,6 +21,16 @@ engine = create_engine(
     connect_args=connect_args,
     pool_pre_ping=True
 )
+
+# SQLite speed optimizations — applied to every connection
+@event.listens_for(engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA cache_size=200000")
+    cursor.execute("PRAGMA temp_store=MEMORY")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.close()
 
 SessionLocal = sessionmaker(
     autocommit=False,

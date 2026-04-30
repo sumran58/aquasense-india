@@ -14,7 +14,7 @@ from app.ml.pipeline import AquaSensePredictor, engineer_features, FEATURE_COLUM
 router = APIRouter()
 _predictor = None
 _cache = {}
-CACHE_TTL = 300
+CACHE_TTL = 3600
 
 def cache_get(key):
     if key in _cache:
@@ -60,14 +60,10 @@ def build_features_from_history(district: str, db: Session, user_overrides: dict
     """
     Build ML features using the EXACT SAME method as training.
     
-    Instead of manually constructing lags/rolling stats (which caused all the bugs),
-    we pull the district's full history, run it through engineer_features() — the same
-    function used during training — and take the last row's features.
-    
-    This guarantees feature parity between training and inference.
+    Key: aggregate multiple wells to district-level quarterly averages FIRST,
+    then run engineer_features(). This matches what training does.
     """
     
-    # Pull ALL readings for this district (same as training data)
     readings = (db.query(GroundwaterReading)
         .filter(GroundwaterReading.district == district)
         .order_by(GroundwaterReading.year, GroundwaterReading.quarter)
@@ -76,7 +72,6 @@ def build_features_from_history(district: str, db: Session, user_overrides: dict
     if not readings:
         return None
     
-    # Build a DataFrame exactly like the training pipeline expects
     rows = []
     for r in readings:
         rows.append({
@@ -96,13 +91,21 @@ def build_features_from_history(district: str, db: Session, user_overrides: dict
     
     df = pd.DataFrame(rows)
     
+    # CRITICAL: Aggregate multiple wells to district quarterly averages
+    # This matches what train_xgboost_recursive_fast does before training
+    agg_cols = {"water_level_mbgl": "mean", "rainfall_mm": "mean",
+                "latitude": "first", "longitude": "first",
+                "state": "first", "district": "first",
+                "population_density": "first", "agricultural_area_pct": "first",
+                "irrigation_wells_per_km2": "first", "ndvi_mean": "first"}
+    df = df.groupby(["district", "year", "quarter"]).agg(agg_cols).reset_index()
+    df = df.sort_values(["year", "quarter"])
+    
     # Run through the SAME engineer_features() used during training
     df_feat = engineer_features(df)
     
-    # Take the last row — this has all correctly computed lags, rolling stats, etc.
     last_row = df_feat.iloc[-1]
     
-    # Extract features as dict
     features = {}
     for col in FEATURE_COLUMNS:
         if col in last_row.index:
@@ -111,22 +114,16 @@ def build_features_from_history(district: str, db: Session, user_overrides: dict
         else:
             features[col] = 0.0
     
-    # Apply user overrides for non-historical features
+    # Apply user overrides
     if user_overrides:
-        if "rainfall_mm" in user_overrides:
-            features["rainfall_mm"] = user_overrides["rainfall_mm"]
-        if "population_density" in user_overrides:
-            features["population_density"] = user_overrides["population_density"]
-        if "agricultural_area_pct" in user_overrides:
-            features["agricultural_area_pct"] = user_overrides["agricultural_area_pct"]
-        if "irrigation_wells_per_km2" in user_overrides:
-            features["irrigation_wells_per_km2"] = user_overrides["irrigation_wells_per_km2"]
-        if "ndvi_mean" in user_overrides:
-            features["ndvi_mean"] = user_overrides["ndvi_mean"]
+        for key in ["rainfall_mm", "population_density", "agricultural_area_pct",
+                     "irrigation_wells_per_km2", "ndvi_mean"]:
+            if key in user_overrides:
+                features[key] = user_overrides[key]
     
     # If user provided a different current level, update lag_1q
     if user_overrides and "current_level_mbgl" in user_overrides:
-        db_latest = last_row["water_level_mbgl"] if "water_level_mbgl" in last_row.index else features["level_lag_1q"]
+        db_latest = float(last_row["water_level_mbgl"]) if "water_level_mbgl" in last_row.index else features["level_lag_1q"]
         user_level = user_overrides["current_level_mbgl"]
         if abs(user_level - db_latest) > 0.01:
             features["level_lag_1q"] = user_level
@@ -140,7 +137,6 @@ async def predict_district(req: PredictRequest, db: Session = Depends(get_db)):
     if not predictor.is_trained():
         raise HTTPException(503, "Model not trained.")
 
-    # Build features using the SAME function as training
     features = build_features_from_history(
         district=req.district,
         db=db,
@@ -167,7 +163,7 @@ async def predict_district(req: PredictRequest, db: Session = Depends(get_db)):
 
     return PredictionOut(
         district=req.district, state=req.state,
-        current_level_mbgl=current,
+        current_level_mbgl=round(current, 2),
         overall_risk=worst["risk_level"],
         risk_color=RISK_META[worst["risk_level"]]["color"],
         summary=summary, predictions=preds)
@@ -182,6 +178,8 @@ async def prediction_stats(db: Session = Depends(get_db)):
         return cached
 
     try:
+        # Use LATEST quarter per district (not all-time average)
+        # This matches what the districts list shows
         row = db.execute(text("""
             SELECT
                 COUNT(*) as districts,
@@ -192,9 +190,14 @@ async def prediction_stats(db: Session = Depends(get_db)):
                 SUM(CASE WHEN avg_level >= 5 AND avg_level <= 12 THEN 1 ELSE 0 END) as stable,
                 SUM(CASE WHEN avg_level < 5 THEN 1 ELSE 0 END) as recovering
             FROM (
-                SELECT district, AVG(water_level_mbgl) as avg_level
-                FROM groundwater_readings
-                GROUP BY district
+                SELECT g.district, AVG(g.water_level_mbgl) as avg_level
+                FROM groundwater_readings g
+                INNER JOIN (
+                    SELECT district, MAX(year * 10 + quarter) AS max_yq
+                    FROM groundwater_readings GROUP BY district
+                ) latest ON g.district = latest.district
+                       AND (g.year * 10 + g.quarter) = latest.max_yq
+                GROUP BY g.district
             )
         """)).fetchone()
     except Exception as e:
@@ -231,12 +234,18 @@ async def get_critical(db: Session = Depends(get_db)):
     cached = cache_get("critical")
     if cached: return cached
 
+    # Use latest quarter's average per district, not all-time
     rows = db.execute(text("""
-        SELECT district, state, AVG(water_level_mbgl) as avg_level,
-               MAX(year) as year, MAX(quarter) as quarter
-        FROM groundwater_readings
-        GROUP BY district, state
-        HAVING AVG(water_level_mbgl) > 20
+        SELECT g.district, g.state, AVG(g.water_level_mbgl) as avg_level,
+               g.year, g.quarter
+        FROM groundwater_readings g
+        INNER JOIN (
+            SELECT district, MAX(year * 10 + quarter) AS max_yq
+            FROM groundwater_readings GROUP BY district
+        ) latest ON g.district = latest.district
+               AND (g.year * 10 + g.quarter) = latest.max_yq
+        GROUP BY g.district, g.state
+        HAVING AVG(g.water_level_mbgl) > 20
         ORDER BY avg_level DESC
         LIMIT 20
     """)).fetchall()
@@ -255,26 +264,33 @@ async def get_geojson(db: Session = Depends(get_db)):
     cached = cache_get("geojson")
     if cached: return cached
 
+    # Use latest quarter's average per district — consistent with dashboard and districts list
     rows = db.execute(text("""
-        SELECT district, state, 
-               AVG(water_level_mbgl) as water_level_mbgl,
-               AVG(latitude) as latitude, 
-               AVG(longitude) as longitude,
-               MAX(year) as year, MAX(quarter) as quarter
-        FROM groundwater_readings
-        WHERE latitude IS NOT NULL AND longitude IS NOT NULL
-        GROUP BY district, state
+        SELECT g.district, g.state, 
+               AVG(g.water_level_mbgl) as water_level_mbgl,
+               AVG(g.latitude) as latitude, 
+               AVG(g.longitude) as longitude,
+               g.year, g.quarter
+        FROM groundwater_readings g
+        INNER JOIN (
+            SELECT district, MAX(year * 10 + quarter) AS max_yq
+            FROM groundwater_readings GROUP BY district
+        ) latest ON g.district = latest.district
+               AND (g.year * 10 + g.quarter) = latest.max_yq
+        WHERE g.latitude IS NOT NULL AND g.longitude IS NOT NULL
+        GROUP BY g.district, g.state
         ORDER BY water_level_mbgl DESC
     """)).fetchall()
 
     features = []
     for r in rows:
-        risk = classify_risk(r.water_level_mbgl)    
+        level = round(float(r.water_level_mbgl), 2)
+        risk = classify_risk(level)
         features.append({
             "type": "Feature",
-            "geometry": {"type": "Point", "coordinates": [r.longitude, r.latitude]},
+            "geometry": {"type": "Point", "coordinates": [round(float(r.longitude), 4), round(float(r.latitude), 4)]},
             "properties": {"district": r.district, "state": r.state,
-                           "level_mbgl": r.water_level_mbgl, "risk": risk,
+                           "level_mbgl": level, "risk": risk,
                            "color": RISK_META[risk]["color"],
                            "year": r.year, "quarter": r.quarter}
         })
