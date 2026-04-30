@@ -51,7 +51,7 @@ def _bulk_insert(df: pd.DataFrame, job_id: str, filename: str):
         conn.execute("PRAGMA synchronous=OFF")
         conn.execute("PRAGMA cache_size=200000")
         conn.execute("PRAGMA temp_store=MEMORY")
-        conn.execute("PRAGMA locking_mode=EXCLUSIVE")
+        
 
         # Clear existing data
         conn.execute("DELETE FROM groundwater_readings")
@@ -64,7 +64,7 @@ def _bulk_insert(df: pd.DataFrame, job_id: str, filename: str):
         ins.to_sql(
             "groundwater_readings", conn,
             if_exists="append", index=False,
-            method="multi", chunksize=50000
+            method="multi", chunksize=500
         )
 
         added = len(ins)
@@ -72,7 +72,7 @@ def _bulk_insert(df: pd.DataFrame, job_id: str, filename: str):
 
         # Restore safe settings
         conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute("PRAGMA locking_mode=NORMAL")
+        
         conn.close()
 
         _jobs[job_id] = {"status": "processing", "message": "Saving upload log...", "progress": 95}
@@ -230,6 +230,12 @@ async def retrain_model(db: Session = Depends(get_db)):
     model = train_xgboost_recursive_fast(df)
     
     pipeline_module._predictor_instance = None
+    try:
+        from app.api.predictions import get_predictor
+        import app.api.predictions as pred_module
+        pred_module._predictor = None
+    except:
+        pass
     
     return {
         "message": f"Model retrained on {len(df):,} records",

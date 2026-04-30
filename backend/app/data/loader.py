@@ -152,7 +152,8 @@ def load_cgwb_csv(filepath: str, source_format: str = "auto") -> pd.DataFrame:
 
     # Map target column
     if "currentlevel" in df.columns:
-        df["water_level_mbgl"] = df["currentlevel"]
+        df["water_level_mbgl"] = df["currentlevel"
+        ""]
 
     # ── Quarter derivation ─────────────────────────────────────────────────
     if "quarter" not in df.columns:

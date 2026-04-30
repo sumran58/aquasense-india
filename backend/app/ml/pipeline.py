@@ -89,7 +89,7 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
 
     mean_rain = rg.transform("mean")
     df["rainfall_deficit"] = mean_rain - df["rainfall_mm"]
-    df["cum_deficit_4q"] = 0.0
+    df["cum_deficit_4q"] = rg.transform(lambda x: x.rolling(4, min_periods=1).sum())
 
     df["year_normalized"] = (
         df["year"] - df["year"].min()
@@ -161,9 +161,15 @@ def train_xgboost_recursive_fast(df: pd.DataFrame):
     """
     Fast recursive-aware training.
     Only samples a few starting points per district instead of all.
-    """
 
+    """
+    agg_cols = {c: "mean" if c in ["water_level_mbgl", "rainfall_mm", "latitude", "longitude"] 
+                else "first" for c in df.columns if c not in ["district", "year", "quarter"]}
+    df = df.groupby(["district", "year", "quarter"]).agg(agg_cols).reset_index()
+    
     df_feat = engineer_features(df)
+
+    
 
     X = df_feat.reindex(columns=FEATURE_COLUMNS).fillna(0)
     y = df_feat[TARGET]
