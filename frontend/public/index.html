@@ -189,10 +189,32 @@ async function loadRiskDonut() {
     RISK_LABEL[l]+" ("+vals[i]+")</div>").join("");
 }
 
-function initMap() {
+/* ─── FIX: Mini map loads from /predictions/geojson API ─── */
+async function initMap() {
   if(miniMap) return;
   miniMap=L.map("miniMap",{center:[22.5,80],zoom:4,zoomControl:false,attributionControl:false});
   L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png").addTo(miniMap);
+  try {
+    const geo = await apiFetch("/predictions/geojson");
+    if (geo && geo.features && geo.features.length) {
+      geo.features.forEach(f => {
+        const p = f.properties;
+        const coords = f.geometry.coordinates; // [lng, lat]
+        L.circleMarker([coords[1], coords[0]], {
+          radius: 5,
+          fillColor: p.color || RISK_COLOR[p.risk] || "#999",
+          color: "#fff",
+          weight: 1,
+          fillOpacity: 0.85
+        }).addTo(miniMap).bindTooltip(
+          "<b>"+p.district+"</b><br>"+fmt(p.level_mbgl)+" mbgl — "+p.risk,
+          {direction:"top"}
+        );
+      });
+      return; // success — real data loaded
+    }
+  } catch(e) { console.warn("Mini map API fallback:", e); }
+  // Fallback to demo if API fails
   demoDistricts().forEach(d=>{
     L.circleMarker([d.lat,d.lng],{radius:6,fillColor:RISK_COLOR[d.risk],color:"#fff",weight:1.5,fillOpacity:0.9})
      .addTo(miniMap).bindTooltip("<b>"+d.district+"</b><br>"+d.level+" mbgl - "+d.risk,{direction:"top"});

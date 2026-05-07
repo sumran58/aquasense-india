@@ -181,7 +181,7 @@ function renderResults(d) {
     const pct = Math.min((p.predicted_level_mbgl / maxL) * 100, 100);
     tl.innerHTML += `
       <div class="timeline-item">
-        <span class="tl-period">${p.quarter && p.year ? `Q${p.quarter} ${p.year}` : `Q${qIdx}`}</span>
+        <span class="tl-period">${p.label || `Q${qIdx}`}</span>
         <div class="tl-bar-wrap"><div class="tl-bar" style="width:${pct}%;background:${p.risk_color||RISK_COLOR[p.risk_level]};"></div></div>
         <span class="tl-level" style="color:${p.risk_color||RISK_COLOR[p.risk_level]};">${(+p.predicted_level_mbgl).toFixed(1)} mbgl</span>
         <span class="tl-risk">${pill(p.risk_level)}</span>
@@ -189,18 +189,18 @@ function renderResults(d) {
   });
 
   // SHAP explanation
-  const shap = d.predictions[0]?.shap;
-  if (shap?.top_features?.length) {
-    const maxAbs = Math.max(...shap.top_features.map(f => Math.abs(f.shap_value)));
+  const shap = d.shap_explanation;
+  if (shap?.top_factors?.length) {
+    const maxAbs = Math.max(...shap.top_factors.map(f => Math.abs(f.shap_value)));
     document.getElementById("shapBlock").innerHTML = `
       <div class="shap-wrap">
         <p class="shap-title">What's driving this prediction? (SHAP Explainability)</p>
-        ${shap.top_features.map(f => {
+        ${shap.top_factors.map(f => {
           const pct  = maxAbs > 0 ? Math.abs(f.shap_value/maxAbs)*100 : 50;
           const col  = f.impact === "increases_risk" ? "#E24B4A" : "#1D9E75";
           const sign = f.shap_value > 0 ? "+" : "";
           return `<div class="shap-item">
-            <span class="shap-feat">${f.label||f.feature.replace(/_/g," ")}</span>
+            <span class="shap-feat">${f.display_name||f.feature.replace(/_/g," ")}</span>
             <div class="shap-bar-bg"><div class="shap-bar-fill" style="width:${pct.toFixed(0)}%;background:${col};"></div></div>
             <span class="shap-val" style="color:${col};">${sign}${f.shap_value.toFixed(3)}</span>
           </div>`;
@@ -220,7 +220,7 @@ function renderResults(d) {
     type: "line",
     data: {
       labels: ["Now", ...d.predictions.map((p,i) => {
-        if (p.quarter && p.year) return `Q${p.quarter} ${p.year}`;
+        if (p.label) return p.label;
         const now = new Date();
         const totalQ = now.getMonth() < 3 ? 1 : now.getMonth() < 6 ? 2 : now.getMonth() < 9 ? 3 : 4;
         const yr = now.getFullYear();

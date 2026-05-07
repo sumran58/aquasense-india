@@ -13,8 +13,6 @@ from sqlalchemy import text
 
 from app.utils.database import init_db
 
-
-
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
@@ -22,7 +20,6 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
-    # Add indexes for fast queries on large datasets
     try:
         with engine.connect() as conn:
             conn.execute(text("CREATE INDEX IF NOT EXISTS idx_dist_yq ON groundwater_readings(district, year, quarter)"))
@@ -44,7 +41,7 @@ app = FastAPI(
 
 ### Quick Start
 1. **Upload CGWB data**: `POST /api/ingest/upload` with your CSV
-2. **Train model**: `python -m app.ml.pipeline`
+2. **Train model**: Hit `/api/ingest/retrain`
 3. **Predict**: `POST /api/predictions/district`
 
 ### Data Sources

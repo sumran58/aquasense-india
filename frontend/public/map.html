@@ -91,19 +91,17 @@ async function initMap() {
   document.getElementById("distList").innerHTML = "<div style='padding:20px;text-align:center;color:var(--text-3);font-size:13px;'>Loading real data...</div>";
 
   try {
-    const data = await apiFetch("/predictions/geojson");
-    if (data.features && data.features.length) {
-      DISTRICTS = data.features
-        .filter(f => f.geometry && f.geometry.coordinates)
-        .map(f => ({
-          district: f.properties.district,
-          state: f.properties.state,
-          lat: f.geometry.coordinates[1],
-          lng: f.geometry.coordinates[0],
-          level: f.properties.level_mbgl,
-          risk: f.properties.risk,
-        }));
-    }
+    const data = await apiFetch("/predictions/current-estimates");
+    DISTRICTS = data.features
+      .filter(f => f.geometry && f.geometry.coordinates)
+      .map(f => ({
+        district: f.properties.district,
+        state: f.properties.state,
+        lat: f.geometry.coordinates[1],
+        lng: f.geometry.coordinates[0],
+        level: f.properties.level_mbgl,
+        risk: f.properties.risk,
+      }));
   } catch(e) {
     console.error("Map data error:", e);
   }

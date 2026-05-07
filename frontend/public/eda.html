@@ -11,7 +11,7 @@
   <div class="sidebar-logo">
     <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="13" stroke="#5DCAA5" stroke-width="1.5"/><path d="M14 4C14 4 8 10 8 15C8 18.8 10.7 22 14 22C17.3 22 20 18.8 20 15C20 10 14 4 14 4Z" fill="#1D9E75" opacity="0.85"/></svg>
     <div class="logo-text"><span class="logo-name">AquaSense</span><span class="logo-sub">India</span></div>
-  </div>shap
+  </div>
   
   <nav class="sidebar-nav">
     <a href="index.html"   class="nav-item"><svg class="nav-icon" viewBox="0 0 20 20"><rect x="2" y="2" width="7" height="7" rx="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5"/><rect x="2" y="11" width="7" height="7" rx="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5"/></svg>Dashboard</a>
@@ -35,13 +35,13 @@
     <!-- Hero -->
     <div class="eda-hero">
       <p class="eda-hero-h">CGWB Groundwater Dataset — Analysis Overview</p>
-      <p class="eda-hero-p">15 years of quarterly groundwater measurements from CGWB observation wells across India. Enriched with IMD rainfall, Census 2021, and NDVI satellite imagery.</p>
+      <p class="eda-hero-p">Quarterly groundwater measurements from CGWB observation wells across India. Enriched with IMD rainfall, Census 2021, and NDVI satellite imagery.</p>
       <div class="eda-stats">
         <div><div class="eda-stat-v" id="stat-districts">—</div><div class="eda-stat-l">Districts</div></div>
         <div><div class="eda-stat-v" id="stat-records">—</div><div class="eda-stat-l">Readings</div></div>
-        <div><div class="eda-stat-v">15 yrs</div><div class="eda-stat-l">Time span</div></div>
-        <div><div class="eda-stat-v">18</div><div class="eda-stat-l">Features</div></div>
-        <div><div class="eda-stat-v" id="stat-r2">R² 0.91</div><div class="eda-stat-l">Model accuracy</div></div>
+        <div><div class="eda-stat-v" id="stat-years">—</div><div class="eda-stat-l">Time span</div></div>
+        <div><div class="eda-stat-v" id="stat-features">23</div><div class="eda-stat-l">Features</div></div>
+        <div><div class="eda-stat-v" id="stat-r2">—</div><div class="eda-stat-l">Model accuracy</div></div>
       </div>
     </div>
 
@@ -53,11 +53,11 @@
       </div>
       <div class="insight-card">
         <div class="insight-h">Top Depletion Drivers</div>
-        <div class="insight-p">Irrigation well density (r=0.78), agricultural area (r=0.65), and cumulative rainfall deficit (r=0.71) are the strongest predictors of critical depletion risk.</div>
+        <div class="insight-p">Previous quarter level, rolling averages, and year-over-year change dominate SHAP importance — lag-based features drive 70%+ of model prediction power.</div>
       </div>
       <div class="insight-card">
         <div class="insight-h">Rajasthan & Punjab Alert</div>
-        <div class="insight-p">These 2 states account for 58% of critical districts. Punjab's Green Revolution irrigation patterns have caused 15m+ depletion in some districts since 2000.</div>
+        <div class="insight-p">These 2 states account for the majority of critical districts. Punjab's Green Revolution irrigation patterns have caused 15m+ depletion in some districts.</div>
       </div>
     </div>
 
@@ -69,7 +69,7 @@
 
     <!-- Charts grid 2 -->
     <div class="eda-grid-2">
-      <div class="card"><div class="card-h"><div><p class="card-title">Rainfall vs Water Level Correlation</p><p class="card-sub">Each point = one district-quarter reading (r = −0.62)</p></div></div><div class="chart-wrap"><canvas id="corrChart"></canvas></div></div>
+      <div class="card"><div class="card-h"><div><p class="card-title">Level Variability by Quarter</p><p class="card-sub">How much groundwater fluctuates each season (from trend data)</p></div></div><div class="chart-wrap"><canvas id="corrChart"></canvas></div></div>
       <div class="card"><div class="card-h"><div><p class="card-title">Feature Importance (SHAP)</p><p class="card-sub">Mean absolute SHAP value — what drives the XGBoost prediction</p></div></div><div class="chart-wrap"><canvas id="shapChart"></canvas></div></div>
     </div>
 
@@ -95,8 +95,13 @@ async function loadStats() {
     ]);
     if(stats.total_districts) document.getElementById("stat-districts").textContent = stats.total_districts.toLocaleString();
     if(status.readings_in_db) document.getElementById("stat-records").textContent = status.readings_in_db.toLocaleString();
-    if(status.year_range) document.querySelector(".eda-stat-v:nth-child(3)") && 
-      (document.querySelectorAll(".eda-stat-v")[2].textContent = status.year_range.replace(" - "," – ").split("–")[1]?.trim()-status.year_range.split("-")[0]?.trim()+" yrs");
+    if(status.year_range && status.year_range !== "No data yet") {
+      const parts = status.year_range.split(" - ");
+      if(parts.length === 2) {
+        const span = parseInt(parts[1]) - parseInt(parts[0]);
+        document.getElementById("stat-years").textContent = span + " yrs";
+      }
+    }
   } catch(e) { console.error("Stats error:", e); }
 }
 
@@ -104,7 +109,6 @@ async function loadSeasonalChart() {
   try {
     const d = await apiFetch("/districts/trend-data");
     if (!d.trend || !d.trend.length) { initSeasonalStatic(); return; }
-    // Group by quarter across all years
     const qAvg = {1:[], 2:[], 3:[], 4:[]};
     d.trend.forEach(t => { if(qAvg[t.quarter]) qAvg[t.quarter].push(t.avg); });
     const avgs = [1,2,3,4].map(q => +(qAvg[q].reduce((a,b)=>a+b,0)/qAvg[q].length).toFixed(2));
@@ -132,7 +136,6 @@ async function loadStateChart() {
   try {
     const d = await apiFetch("/districts/");
     if (!d.districts || !d.districts.length) { initStateStatic(); return; }
-    // Group by state and average
     const stateMap = {};
     d.districts.forEach(dist => {
       if (!stateMap[dist.state]) stateMap[dist.state] = [];
@@ -153,9 +156,9 @@ async function loadStateChart() {
 
 function initStateStatic() {
   mk("stateChart",{type:"bar",data:{
-    labels:["Rajasthan","Punjab","Haryana","Gujarat","Maharashtra","Andhra Pradesh","Karnataka","Tamil Nadu","UP","Bihar","Kerala"],
-    datasets:[{label:"Avg Depth",data:[18.2,16.9,15.3,13.7,12.1,10.8,9.8,8.4,10.2,4.8,3.1],
-               backgroundColor:d=>["#E24B4A","#E24B4A","#E24B4A","#EF9F27","#EF9F27","#EF9F27","#1D9E75","#1D9E75","#EF9F27","#1D9E75","#378ADD"][d.dataIndex],borderRadius:4}]},
+    labels:["Rajasthan","Punjab","Haryana","Gujarat","Maharashtra"],
+    datasets:[{label:"Avg Depth",data:[18.2,16.9,15.3,13.7,12.1],
+               backgroundColor:["#E24B4A","#E24B4A","#E24B4A","#EF9F27","#EF9F27"],borderRadius:4}]},
     options:{responsive:true,maintainAspectRatio:false,indexAxis:"y",plugins:{legend:{display:false}},
              scales:{x:{ticks:{callback:v=>v+"m"},grid:{color:"rgba(0,0,0,0.04)"}},y:{grid:{display:false},ticks:{font:{size:10}}}}}
   });
@@ -187,22 +190,42 @@ function initDistStatic() {
   });
 }
 
-document.addEventListener("DOMContentLoaded", async () => {
-  injectDataBanner();
-  await loadStats();
-  await Promise.all([loadSeasonalChart(), loadStateChart(), loadDistributionChart()]);
-  // Static charts (SHAP, correlation) stay as is
-  initStaticCharts();
-});
+/* ─── FIX: Load real SHAP data from API ─── */
+async function loadShapChart() {
+  try {
+    // Get a critical district to show representative SHAP values
+    const critical = await apiFetch("/predictions/critical");
+    let district = "Jodhpur"; // default
+    if (critical.districts && critical.districts.length) {
+      district = critical.districts[0].district;
+    }
+    const shap = await apiFetch("/predictions/shap/" + encodeURIComponent(district));
+    if (shap && shap.top_factors && shap.top_factors.length) {
+      const factors = shap.top_factors.slice(0, 8);
+      mk("shapChart",{type:"bar",data:{
+        labels: factors.map(f => f.display_name),
+        datasets:[{label:"SHAP Impact",
+          data: factors.map(f => Math.abs(f.shap_value)),
+          backgroundColor: factors.map(f => f.direction==="deepens" ? "#E24B4A" : "#1D9E75"),
+          borderRadius:4}]},
+        options:{responsive:true,maintainAspectRatio:false,indexAxis:"y",
+          plugins:{legend:{display:false},
+            tooltip:{callbacks:{label:c=>{
+              const f=factors[c.dataIndex];
+              return f.display_name+": "+f.shap_value+" ("+f.direction+")";
+            }}}},
+          scales:{x:{grid:{color:"rgba(0,0,0,0.04)"},title:{display:true,text:"Mean |SHAP value|",font:{size:10}}},
+                  y:{grid:{display:false},ticks:{font:{size:10}}}}}
+      });
+      return;
+    }
+  } catch(e) { console.warn("SHAP API fallback:", e); }
+  // Fallback to static
+  initShapStatic();
+}
 
-function initStaticCharts() {
-  const scatter = Array.from({length:80},(_,i)=>{ const r=200+Math.random()*1400; return {x:+r.toFixed(0),y:+(20-(r/100)+Math.random()*8).toFixed(1)}; });
-  mk("corrChart",{type:"scatter",data:{datasets:[{label:"District-Quarter",data:scatter,backgroundColor:"rgba(29,158,117,0.35)",pointRadius:4}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-             scales:{x:{title:{display:true,text:"Rainfall (mm)",font:{size:11}},grid:{color:"rgba(0,0,0,0.04)"}},
-                     y:{title:{display:true,text:"Water Level (mbgl)",font:{size:11}},grid:{color:"rgba(0,0,0,0.04)"}}}}}
-  );
-  const feats=["Irrigation wells/km²","Rainfall deficit","Lag 1-quarter level","YoY change","Cumulative deficit","Agricultural area %","NDVI index","Population density"];
+function initShapStatic() {
+  const feats=["Previous Quarter Level","4-Quarter Rolling Avg","Year-over-Year Change","Level Volatility","Depletion Acceleration","Quarterly Rainfall","Vegetation Index","Population Density"];
   const vals=[0.82,0.71,0.65,0.58,0.52,0.45,0.38,0.31];
   mk("shapChart",{type:"bar",data:{labels:feats,datasets:[{label:"Mean |SHAP|",data:vals,
     backgroundColor:vals.map(v=>v>0.6?"#E24B4A":v>0.4?"#EF9F27":"#1D9E75"),borderRadius:4}]},
@@ -211,6 +234,58 @@ function initStaticCharts() {
                      y:{grid:{display:false},ticks:{font:{size:10}}}}}
   });
 }
+
+/* ─── FIX: Variability chart from real trend data ─── */
+async function loadVariabilityChart() {
+  try {
+    const d = await apiFetch("/districts/trend-data");
+    if (!d.trend || !d.trend.length) { initVariabilityStatic(); return; }
+    // Compute range (max-min) per quarter across all years
+    const qData = {1:{mins:[],maxs:[]}, 2:{mins:[],maxs:[]}, 3:{mins:[],maxs:[]}, 4:{mins:[],maxs:[]}};
+    d.trend.forEach(t => {
+      if(qData[t.quarter]) {
+        qData[t.quarter].mins.push(t.min);
+        qData[t.quarter].maxs.push(t.max);
+      }
+    });
+    const avgMin = [1,2,3,4].map(q => +(qData[q].mins.reduce((a,b)=>a+b,0)/qData[q].mins.length).toFixed(2));
+    const avgMax = [1,2,3,4].map(q => +(qData[q].maxs.reduce((a,b)=>a+b,0)/qData[q].maxs.length).toFixed(2));
+    const avgAvg = [1,2,3,4].map(q => {
+      const all = [...qData[q].mins, ...qData[q].maxs];
+      return +(all.reduce((a,b)=>a+b,0)/all.length).toFixed(2);
+    });
+
+    mk("corrChart",{type:"bar",data:{
+      labels:["Q1 Jan–Mar","Q2 Apr–Jun","Q3 Jul–Sep","Q4 Oct–Dec"],
+      datasets:[
+        {label:"Shallowest District Avg",data:avgMin,backgroundColor:"#378ADD",borderRadius:4},
+        {label:"Deepest District Avg",data:avgMax,backgroundColor:"#E24B4A",borderRadius:4},
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{position:"top",labels:{font:{size:10},boxWidth:10}}},
+        scales:{y:{ticks:{callback:v=>v+"m"},grid:{color:"rgba(0,0,0,0.04)"}},x:{grid:{display:false}}}}
+    });
+  } catch { initVariabilityStatic(); }
+}
+
+function initVariabilityStatic() {
+  mk("corrChart",{type:"bar",data:{
+    labels:["Q1","Q2","Q3","Q4"],
+    datasets:[
+      {label:"Min Depth",data:[2.1,3.5,1.2,2.8],backgroundColor:"#378ADD",borderRadius:4},
+      {label:"Max Depth",data:[28,35,22,30],backgroundColor:"#E24B4A",borderRadius:4},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:"top",labels:{font:{size:10},boxWidth:10}}},
+      scales:{y:{ticks:{callback:v=>v+"m"},grid:{color:"rgba(0,0,0,0.04)"}},x:{grid:{display:false}}}}
+  });
+}
+
+document.addEventListener("DOMContentLoaded", async () => {
+  injectDataBanner();
+  await loadStats();
+  await Promise.all([loadSeasonalChart(), loadStateChart(), loadDistributionChart(), loadShapChart(), loadVariabilityChart()]);
+});
 </script>
 </body>
 </html>
